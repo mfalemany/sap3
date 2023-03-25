@@ -1,0 +1,115 @@
+<?php 
+class Cvar_getter{
+	
+	private $config;
+	public  $cuil;
+	public $datos;
+	private $error;
+	private $ruta_servicio;
+
+	function __construct($cuil){
+		$this->cuil = $cuil;
+		//Se obtiene el archivo con las configuraciones generales
+		$this->get_archivo_conf();
+		//Si no se pudo leer el archivo de configuración, no se continúa
+		if($this->error) return;
+
+		$this->get_datos_servicio();
+	}
+
+
+	private function get_archivo_conf()
+	{
+		if( ! file_exists( __DIR__ . '/config.json')){
+			$this->set_error('No se encontró el archivo de configuración');
+			return;
+		}
+		$this->config = json_decode(file_get_contents(__DIR__ . '/config.json'),TRUE);	
+	}
+
+	function get_datos($formato = 'json',$seccion = NULL){
+		if (is_string($datos)) {
+			$datos = json_decode($this->datos,TRUE);
+		}
+		if($seccion && isset($datos[$seccion])){
+			$this->datos = $datos[$seccion];
+		}
+		switch ($formato) {
+			case 'json':
+				return json_encode($this->datos);
+				break;
+			case 'array':
+				return $this->datos;
+				break;
+			default:
+				return $this->datos;
+				break;
+		}
+	}
+
+	function get_seccion($seccion,$formato='json')
+	{
+		$datos = json_decode($this->datos,TRUE);
+		$datos = $datos[$seccion];
+		switch ($formato) {
+			case 'json':
+				return json_encode($datos);
+				break;
+			case 'array':
+				return $datos;
+				break;
+		}
+
+	}
+
+
+	private function get_datos_servicio(){
+		if( ! isset($this->config['ruta_servicio_cvar']) ){
+			$this->set_error('El archivo de configuración no contiene la llave \'ruta_servicio_cvar\'');
+			return;
+		}
+		try {
+			$curl = curl_init();
+			$url = $this->config['ruta_servicio_cvar'] . str_replace(array('-','.','/',' '),'',$this->cuil);
+
+			$headers = array(
+				"Accept: application/xml,application/xhtml+xml,text/html",
+				"Cache-Control: no-cache",
+				"Pragma: no-cache",
+				"Connection: keep-alive",
+			);
+			
+			curl_setopt($curl, CURLOPT_URL, $url);
+			//curl_setopt($curl, CURLOPT_PROXY, 'http://proxyrec.unne.local:3128/');
+			curl_setopt($curl, CURLOPT_RETURNTRANSFER, TRUE);
+			curl_setopt($curl, CURLOPT_TIMEOUT, 180);
+			curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+
+			toba::consulta_php('helper_archivos')->log('CVAR Getter: se inicia la consulta de datos del usuario ' . $this->cuil . ' a la url: ' . $url);
+			$respuesta = curl_exec($curl);
+			if ($respuesta == false) {
+				toba::consulta_php('helper_archivos')->log('CVAR Getter: Error en la respuesta del usuario ' . $this->cuil);
+			} else {
+				toba::consulta_php('helper_archivos')->log('CVAR Getter: se obtuvo una respuesta correcta para el usuario ' . $this->cuil);
+			}
+			curl_close($curl);
+			$xml = simplexml_load_string($respuesta);
+			$this->datos_json = json_encode($xml);
+			$this->datos = json_decode($this->datos_json,TRUE);
+		} catch (Exception $e) {
+			toba::consulta_php('helper_archivos')->log('CVAR Getter: Ocurrió un error al intentar consultar la información del usuario ' . $this->cuil . ': ' . $e->getMessage());
+			$this->set_error($e->getMessage());
+		}
+	}
+
+	function get_error()
+	{
+		return $this->error;
+	}
+
+	protected function set_error($mensaje = NULL){
+		$this->error = ($mensaje) ? $mensaje : 'Ocurrió un error desconocido';
+	}
+}
+?>
+

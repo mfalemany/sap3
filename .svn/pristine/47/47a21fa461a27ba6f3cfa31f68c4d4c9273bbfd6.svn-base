@@ -1,0 +1,357 @@
+<?php
+class co_becas_informes
+{
+	//Se considera vigente a aquellas becas que lo estÃ©n, o bien que hayan finalizado hace menos de 70 dÃ­as
+	function get_becas_vigentes($filtro = array())
+	{
+		$where = array();
+		$sql = "SELECT 
+					per.nro_documento,
+					per.apellido||', '||per.nombres AS postulante,	
+					conv.id_convocatoria,
+					conv.convocatoria,
+					tipbec.id_tipo_beca,
+					tipbec.tipo_beca,
+					dep.nombre AS dependencia,
+					lugtrab.nombre AS lugar_trabajo
+				FROM be_becas_otorgadas AS oto 
+				LEFT JOIN be_inscripcion_conv_beca AS insc ON (
+					insc.nro_documento = oto.nro_documento 
+					AND insc.id_convocatoria = oto.id_convocatoria 
+					AND insc.id_tipo_beca = oto.id_tipo_beca
+				)
+				LEFT JOIN sap_personas AS per ON per.nro_documento = insc.nro_documento
+				LEFT JOIN be_convocatoria_beca AS conv ON conv.id_convocatoria = insc.id_convocatoria
+				LEFT JOIN be_tipos_beca AS tipbec ON tipbec.id_tipo_beca = insc.id_tipo_beca
+				LEFT JOIN sap_dependencia AS dep ON dep.id = insc.id_dependencia
+				LEFT JOIN sap_dependencia AS lugtrab ON lugtrab.id = insc.lugar_trabajo_becario";
+		if(isset($filtro['nro_documento'])){
+			$where[] = "insc.nro_documento = " . quote($filtro['nro_documento']);
+		}
+		if(isset($filtro['becario'])){
+			$where[] = "insc.nro_documento IN (SELECT nro_documento FROM sap_personas WHERE apellido ILIKE " . quote('%'.$filtro['becario'].'%') . " OR nombres ILIKE ". quote('%'.$filtro['becario'].'%') .")";
+		}
+		if(isset($filtro['id_area_conocimiento']) && $filtro['id_area_conocimiento']){
+			$where[] = "insc.id_area_conocimiento = " . quote($filtro['id_area_conocimiento']);
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	/**
+	 * Retorna la cantidad de informes que debe presentar un becario, incluyendo informes de avance y final.
+	 * @param  integer $id_tipo_beca ID del tipo de beca
+	 * @return integer               Cantidad de informes que se deben presentar a lo largo de la beca
+	 */
+	protected function get_cantidad_informes($id_tipo_beca){
+		$duracion_meses = toba::consulta_php('co_becas')->get_campo('be_tipos_beca','duracion_meses',['id_tipo_beca' => $id_tipo_beca]);
+		$meses_present_avance = toba::consulta_php('co_becas')->get_campo('be_tipos_beca','meses_present_avance',['id_tipo_beca' => $id_tipo_beca]);
+		return intval($duracion_meses / $meses_present_avance);
+	}
+
+	function get_detalles_informe($id_informe)
+	{
+		$where = array();
+
+		$sql = "SELECT 
+					--Postulante
+					per.nro_documento,
+					per.apellido||', '||per.nombres as postulante,
+					--Director
+					dir.nro_documento AS nro_documento_dir,
+					dir.apellido||', '||dir.nombres as director,
+					--Co-Director
+					codir.nro_documento AS nro_documento_codir,
+					codir.apellido||', '||codir.nombres as codirector,
+					--Sub-Director
+					subdir.nro_documento AS nro_documento_subdir,
+					subdir.apellido||', '||subdir.nombres as subdirector,
+					insc.titulo_plan_beca,
+					conv.id_convocatoria, 
+					insc.id_area_conocimiento,
+					conv.convocatoria,
+					tb.tipo_beca AS tipo_beca_desc,
+					oto.nro_resol,
+					CASE ib.tipo_informe WHEN 'A' THEN 'Avance' WHEN 'F' THEN 'Final' ELSE 'No identificado' END as tipo_informe_desc,
+					ac.nombre AS area_conocimiento_desc,
+					ib.id_informe,
+					ib.fecha_presentacion,
+					CASE ie.resultado WHEN 'A' THEN 'Aprobado' WHEN 'M' THEN 'A modificar' WHEN 'N' THEN 'No aprobado' ELSE 'No evaluado' END as evaluacion_desc,
+					ie.observaciones,
+					ie.fecha AS fecha_evaluacion
+				FROM be_informe_beca AS ib 
+				LEFT JOIN be_informe_evaluacion AS ie ON ib.id_informe = ie.id_informe
+				LEFT JOIN be_becas_otorgadas AS oto 
+					ON oto.id_convocatoria = ib.id_convocatoria
+					AND oto.id_tipo_beca   = ib. id_tipo_beca
+					AND oto.nro_documento  = ib.nro_documento
+				LEFT JOIN be_inscripcion_conv_beca AS insc 
+					ON insc.id_convocatoria = ib.id_convocatoria
+					AND insc.id_tipo_beca   = ib. id_tipo_beca
+					AND insc.nro_documento  = ib.nro_documento
+				LEFT JOIN sap_personas AS per ON per.nro_documento = ib.nro_documento
+				LEFT JOIN sap_personas AS dir ON dir.nro_documento = insc.nro_documento_dir
+				LEFT JOIN sap_personas AS codir ON codir.nro_documento = insc.nro_documento_codir
+				LEFT JOIN sap_personas AS subdir ON subdir.nro_documento = insc.nro_documento_subdir
+				LEFT JOIN be_convocatoria_beca AS conv ON conv.id_convocatoria = ib.id_convocatoria
+				LEFT JOIN be_tipos_beca AS tb ON tb.id_tipo_beca = ib.id_tipo_beca
+				LEFT JOIN sap_area_conocimiento AS ac ON ac.id = insc.id_area_conocimiento
+				LEFT JOIN sap_dependencia AS dep ON dep.id = (SELECT CASE insc.id_tipo_beca WHEN 1 THEN insc.id_dependencia ELSE insc.lugar_trabajo_becario END)
+				WHERE ib.id_informe = " . quote($id_informe) . "
+				ORDER BY postulante
+				LIMIT 1";
+
+		$resultado['informe'] = toba::db()->consultar_fila($sql);
+		$resultado['evaluadores'] = $this->get_evaluadores_informe($id_informe);
+		
+
+		return $resultado;
+	}
+
+	private function get_estado_evaluacion($postulacion,$nro_informe)
+	{
+		$id_informe = $this->get_id_informe($postulacion,$nro_informe);
+		if( ! $id_informe) return FALSE;
+
+		$sql = 'SELECT resultado FROM be_informe_evaluacion WHERE id_informe = ' . quote($id_informe);
+		$resultado = toba::db()->consultar_fila($sql);
+		return $resultado['resultado'];
+	}
+
+	public function get_evaluadores_informe($id_informe)
+	{
+		//Obtengo los evaluadores
+		$sql = "SELECT apellido, nombres, nro_documento 
+				FROM sap_personas 
+				WHERE nro_documento IN (
+    				SELECT UNNEST(string_to_array(evaluadores,','))
+    				FROM be_informe_evaluacion AS ie
+    				WHERE id_informe = " . quote($id_informe) . ")";
+		return toba::db()->consultar($sql);
+	}
+
+	private function get_fecha_debe_ser_presentado($postulacion,$nro_informe)
+	{
+		$where = $this->get_where_informe($postulacion, $nro_informe);
+		//Esta consulta suma los meses (en dias) necesarios para obtener la fecha en que debe ser presentado el informe numero X (si la fecha de ser presentado es posterior a la fecha_hasta, se devuelve esta Ãºltima (caso de bajas))
+		$sql = "SELECT 
+					CASE WHEN fecha_debe_ser_presentado > fecha_hasta THEN fecha_hasta 
+					ELSE fecha_debe_ser_presentado END AS fecha_debe_ser_presentado 
+			FROM (
+				SELECT oto.fecha_hasta, (oto.fecha_desde::date + (( (
+						--Se resta uno porque puede presentar DESDE un mes antes que el plazo previsto (si debe presentar cada 6 meses, a partir del mes 5 ya podrÃ­a presentar)
+						/* TODO: cambiar el -3 por -1 despues del 01/01/2023 (se hizo por una excepción) */
+						SELECT (meses_present_avance - 3) as meses_present_avance
+						FROM be_tipos_beca 	
+						WHERE id_tipo_beca = oto.id_tipo_beca)  * $nro_informe)*30)::integer 
+					) AS fecha_debe_ser_presentado
+				FROM be_becas_otorgadas as oto
+				WHERE oto.id_convocatoria = " . quote($postulacion['id_convocatoria']) . "
+				AND oto.id_tipo_beca = " . quote($postulacion['id_tipo_beca']) . "
+				AND oto.nro_documento = " . quote($postulacion['nro_documento']) ."
+			) AS tmp";
+		$resultado = toba::db()->consultar_fila($sql);
+		ei_arbol($resultado);
+		return (isset($resultado['fecha_debe_ser_presentado'])) ? $resultado['fecha_debe_ser_presentado'] : NULL;
+	}
+
+	function get_id_informe($postulacion, $nro_informe)
+	{
+		extract($postulacion);
+		$sql = "SELECT id_informe
+				FROM be_informe_beca 
+				WHERE nro_documento = " . quote($nro_documento) . " 
+				AND id_convocatoria = " . quote($id_convocatoria) . " 
+				AND id_tipo_beca = " . quote($id_tipo_beca) . " 
+				AND nro_informe = " . quote($nro_informe);
+		$resultado = toba::db()->consultar_fila($sql);
+		return (count($resultado) && isset($resultado['id_informe']) && $resultado['id_informe']) ? $resultado['id_informe'] : FALSE;
+	}
+
+	/**
+	 * Esta funcion calcula y retorna todos los informes que debe presentar una postulación a lo largo de su vigencia. Para obtener un listado de los informes ya presentados (para la evaluación por ejemplo) use el mÃ©todo get_informes_presentados()
+	 * @param  array $postulacion Array con las claves correspondientes a la postulacion
+	 * @return array              Array con los informes que debe presentar la postulación
+	 */
+	function get_informes_postulacion($postulacion)
+	{
+		//Posibles estados de evaluacion
+		$estados_eval = array('A'=>'Aprobado','M'=>'Se solicitaron modificaciones','N'=>'No Aprobado');
+		$cant_informes = $this->get_cantidad_informes($postulacion['id_tipo_beca']);
+		$informes = array();
+		for($i=1; $i <= $cant_informes; $i++){
+			$estado = $this->estado_informe($postulacion,$i);
+			if($estado['existe']){
+				$inf = $estado['detalles']['informe'];
+			}
+			//Algunas variaciones dependiendo del tipo de informe (avance o final)
+			$tipo_informe = ($i == $cant_informes) 
+				? array('id'=>'F','desc'=>'Final')
+				: array('id'=>'A','desc'=>'Avance');
+			
+			$informes[] = array(
+				'id_convocatoria'           => $postulacion['id_convocatoria'],
+				'id_tipo_beca'              => $postulacion['id_tipo_beca'],
+				'nro_documento'             => $postulacion['nro_documento'],
+				'nro_informe'               => $i, 
+				'tipo_informe'              => $tipo_informe['id'],
+				'tipo_informe_desc'         => $tipo_informe['desc'],
+				'estado'                    => ($estado['existe']) ? 'Presentado' : 'No presentado', 
+				'id_informe'                => ($estado['existe']) ? $inf['id_informe'] : NULL, 
+				'fecha_debe_ser_presentado' => $estado['fecha_debe_ser_presentado'],
+				'fecha_presentacion'        => ($estado['existe']) ? $inf['fecha_presentacion'] : NULL, 
+				'fecha_evaluacion'          => ($estado['existe']) ? $inf['fecha_evaluacion'] : NULL, 
+				'estado_eval'               => $estado['estado_eval'],
+				'estado_eval_desc'          => ($estado['estado_eval']) ? $estados_eval[$estado['estado_eval']] : FALSE
+			);
+		}
+		return $informes;
+	}
+	function get_informes_pendientes_evaluacion($filtro = array())
+	{
+		$where = array();
+		$sql = "SELECT per.nro_documento,
+						per.apellido||', '||per.nombres AS postulante,
+						conv.id_convocatoria,
+						conv.convocatoria,
+						tb.id_tipo_beca,
+						tb.tipo_beca,
+						dep.nombre AS dependencia,
+						lugtrab.nombre AS lugar_trabajo
+				FROM be_informe_beca AS ib
+				LEFT JOIN be_inscripcion_conv_beca AS insc 
+					ON insc.id_convocatoria = ib.id_convocatoria 
+					AND insc.id_tipo_beca = ib.id_tipo_beca 
+					AND insc.nro_documento = ib.nro_documento
+				LEFT JOIN sap_personas AS per ON per.nro_documento = ib.nro_documento
+				LEFT JOIN be_convocatoria_beca AS conv ON conv.id_convocatoria = ib.id_convocatoria
+				LEFT JOIN be_tipos_beca AS tb ON tb.id_tipo_beca = ib.id_tipo_beca
+				LEFT JOIN sap_dependencia AS dep ON dep.id = insc.id_dependencia
+				LEFT JOIN sap_dependencia AS lugtrab ON lugtrab.id = insc.lugar_trabajo_becario
+				/*WHERE NOT EXISTS (
+					SELECT * 
+					FROM be_informe_evaluacion 
+					WHERE id_informe = ib.id_informe 
+				    --Que el resultado no sea 'Solicitar modificaciones' (debe seguir apareciendo hasta que apruebe o repruebe)
+				    AND resultado <> 'M'
+				)*/
+				ORDER BY conv.convocatoria, tb.tipo_beca";
+		if(isset($filtro['id_area_conocimiento'])){
+			$where[] = 'insc.id_area_conocimiento = ' . quote($filtro['id_area_conocimiento']);
+		}
+		if(isset($filtro['id_convocatoria'])){
+			$where[] = 'insc.id_convocatoria = ' . quote($filtro['id_convocatoria']);
+		}
+		if(isset($filtro['becario'])){
+		$where[] = "quitar_acentos(per.apellido) ilike quitar_acentos(".quote("%".$filtro['becario']."%").")
+				OR quitar_acentos(per.nombres) ilike quitar_acentos(".quote("%".$filtro['becario']."%").")";
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+	}
+	function get_informes_presentados($postulacion,$solo_evaluables=FALSE)
+	{
+		$cant = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('inf_beca_cant_eval_postivas');
+		if( ! $cant) throw new toba_error('No se ha definido el parámetro "inf_beca_cant_eval_postivas", necesario para la evaluación de informes de becas. Por favor, establezca ese parámetro en las configuraciones del sistema.');
+		
+		$sql = "SELECT *
+				FROM (
+					SELECT *,
+					CASE ib.tipo_informe WHEN 'A' THEN 'Avance' WHEN 'F' THEN 'Final' END AS tipo_informe_desc
+					FROM be_informe_beca AS ib
+					WHERE ib.id_convocatoria = " . quote($postulacion['id_convocatoria']) . "
+					AND ib.id_tipo_beca =      " . quote($postulacion['id_tipo_beca']) . "
+					AND ib.nro_documento =     " . quote($postulacion['nro_documento']);
+					if($solo_evaluables){
+						$sql .= " AND ib.evaluable = true";
+					}
+		$sql .= ") AS tmp";
+		return toba::db()->consultar($sql);
+	}
+
+	function get_plazos($solo_vigentes = FALSE, $tipo_plazo = FALSE, $tipo_informes = FALSE)
+	{
+		$where = array();
+		$sql = "SELECT *, 
+		CASE tipo_plazo WHEN 'P' THEN 'Presentación' WHEN 'E' THEN 'Evaluación' END as tipo_plazo_desc,
+		CASE tipo_informes 
+			WHEN 'A' THEN 'Avance' 
+			WHEN 'F' THEN 'Finales'
+			WHEN 'T' THEN 'Todos' END as tipo_informes_desc
+		FROM be_informe_plazos";
+		if($solo_vigentes){
+			$where[] = "CURRENT_DATE BETWEEN fecha_desde AND fecha_hasta";
+		}
+		if($tipo_plazo){
+			$where[] = "tipo_plazo = " . quote($tipo_plazo);
+		}
+		
+		if($tipo_informes){
+			$where[] = "tipo_informes = " . quote($tipo_informes);
+		}
+		
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	private function get_where_informe($postulacion,$nro_informe)
+	{
+		//Datos necesarios para buscar un informe de beca
+		if( ! (isset($postulacion['id_convocatoria']) && 
+			isset($postulacion['id_tipo_beca']) && 
+			isset($postulacion['nro_documento'])) ){
+			throw new toba_error('No se recibieron los datos necesarios para buscar el informe de beca.');
+		}
+		//Condiciones
+		$where[] = 'id_convocatoria = ' . quote($postulacion['id_convocatoria']);
+		$where[] = 'id_tipo_beca = '    . quote($postulacion['id_tipo_beca']);
+		$where[] = 'nro_documento = '   . quote($postulacion['nro_documento']);
+		$where[] = 'nro_informe = '     . quote($nro_informe);
+		return $where;
+	}
+
+	protected function estado_informe($postulacion,$nro_informe)
+	{
+		$estado = array(
+			'existe'                   => $this->existe_informe($postulacion,$nro_informe),
+			'estado_eval'              => NULL,
+			'fecha_debe_ser_presentado'=> $this->get_fecha_debe_ser_presentado($postulacion,$nro_informe)
+		);
+		//Si existe, verifico el estado y la feche que corresponde presentarlo
+		if($estado['existe']){
+			$id_informe = $this->get_id_informe($postulacion,$nro_informe);
+			$estado['detalles'] = $this->get_detalles_informe($id_informe);
+			$estado['estado_eval'] = $this->get_estado_evaluacion($postulacion,$nro_informe);
+		}
+		return $estado;
+	}
+
+	private function existe_informe($postulacion, $nro_informe){
+		$where = $this->get_where_informe($postulacion, $nro_informe);
+		$sql = sql_concatenar_where("SELECT * FROM be_informe_beca LIMIT 1",$where);
+		return (count(toba::db()->consultar($sql)) > 0);
+	}
+
+	public function hay_plazo_abierto_informes($tipo_plazo)
+	{
+		return count($this->get_plazos(TRUE,$tipo_plazo));
+	}
+
+	function tiene_evaluacion($id_informe)
+	{
+		$sql = "SELECT * FROM be_informe_evaluacion WHERE id_informe = " . quote($id_informe) . " LIMIT 1";
+		return (toba::db()->consultar_fila($sql));
+	}
+
+	
+
+
+}
+
+?>

@@ -1,0 +1,33 @@
+
+<?php
+
+class helper
+{
+	/**
+	 * Ordena los elementos de un array tomando como referencia la columna recibida como argumento
+	 * @param  array  $array              
+	 * @param  string $columna_ordenacion 
+	 * @return mixed                      
+	 */
+	function ordenar_array($array, $columna_ordenacion)
+	{
+		if ( ! is_array($array) ) {
+			return false;
+		}
+
+		//array que se va a retornar
+		$datos_ordenados = array();
+		
+		//Obtengo solamente la columna de ordenacion
+		$columna_valores = array_column($array, $columna_ordenacion);
+		//Ordeno los datos
+		asort($columna_valores);
+
+		foreach (array_keys($columna_valores) as $indice) {
+			$datos_ordenados[] = $array[$indice];
+		}
+		return $datos_ordenados;
+	}
+}
+
+?>

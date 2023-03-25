@@ -1,0 +1,140 @@
+<?php 
+class CVFromCvar extends FPDF
+{
+	protected $nombre_archivo;
+	protected $alto_linea;
+	protected $ancho_etiqueta;
+	protected $ancho_hoja;
+	protected $fuente_familia;
+	protected $fuente_tamanio;
+	protected $borde;
+	protected $datos_personales;
+	protected $datos_experticia;
+	protected $formacion;
+	protected $cargos;
+	protected $antecedentes;
+	protected $produccion;
+
+	function __construct($datos)
+	{
+		$this->alto_linea       = 5;
+		$this->ancho_etiqueta   = 50;
+		$this->ancho_hoja       = 190;
+		$this->fuente_familia   = 'Times';
+		$this->fuente_tamanio   = 11;
+		$this->borde            = true;
+		$this->datos_personales = $datos['datosPersonales'];
+		$this->datos_experticia = $datos['datosExperticia'];
+		$this->formacion        = $datos['formacion'];
+		$this->cargos           = $datos['cargos'];
+		$this->antecedentes     = $datos['antecedentes'];
+		$this->produccion       = $datos['produccion'];
+
+		//var_dump($this->datos_personales);die;
+		parent::__construct();
+		
+		//Formato A4 y Apaisado
+		$this->AddPage('Portrait','A4');
+
+		$this->setFont('Times', '', 11);
+		$this->setXY(10,10); 
+		$this->Cell(90,$this->alto_linea,'Reporte de CVAr', $this->borde, 1, 'C', false);
+
+
+		$this->datos_personales();
+		$this->datos_domicilio();
+	}
+
+	protected function datos_personales()
+	{
+		$this->titulo_seccion('Datos personales');
+		//Apellido y Nombres
+		$ayn = sprintf('%s, %s', $this->datos_personales['identificacion']['apellido'], $this->datos_personales['identificacion']['nombre']);  
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Apellido y nombre:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(),$this->alto_linea, $ayn, $this->borde, 1, 'L', false);
+		
+		//Número de Documento
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Nro. Documento:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['tipoDocumento'] . ' ' . $this->datos_personales['identificacion']['numeroDocumento'], $this->borde, 1, 'L', false);
+
+		//CUIL
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'CUIL:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['cuil'], $this->borde, 1, 'L', false);
+
+		//Fecha de Nacimiento
+		$fec_nac = new DateTime($this->datos_personales['identificacion']['fechaNacimiento']);
+
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Nacimiento:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $fec_nac->format('d/m/Y'), $this->borde, 1, 'L', false);
+
+		//Estado Civil
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Estado Civil:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['estadoCivil'], $this->borde, 1, 'L', false);
+
+		//Nacionalidad
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Nacionalidad:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['provinciaNacimiento']['provincia'] . ' - ' .$this->datos_personales['identificacion']['paisNacionalidad']['pais'], $this->borde, 1, 'L', false);
+
+		//Sexo
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Sexo:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, ucwords(strtolower($this->datos_personales['identificacion']['sexo'])), $this->borde, 1, 'L', false);
+	}
+
+	protected function datos_domicilio()
+	{
+		if (isset($this->datos_personales['direccionResidencial'])) {
+			//Dirección
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Domicilio residencial:', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionResidencial']['calle'] . ' ' . $this->datos_personales['direccionResidencial']['numero'] . ' - (' . $this->datos_personales['direccionResidencial']['codigoPostal'] . ') ' . $this->datos_personales['direccionResidencial']['localidad']['localidad'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionResidencial']['celular'])) {
+			//Celular
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Celular (personal):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionResidencial']['celular'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionResidencial']['email'])) {
+			//Email
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'E-Mail (personal):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionResidencial']['email'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionLaboral'])) {
+			//Dirección
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Domicilio laboral:', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionLaboral']['calle'] . ' ' . $this->datos_personales['direccionLaboral']['numero'] . ' - (' . $this->datos_personales['direccionLaboral']['codigoPostal'] . ') ' . $this->datos_personales['direccionLaboral']['localidad']['localidad'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionLaboral']['celular'])) {
+			//Celular
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Celular (laboral):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionLaboral']['celular'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionLaboral']['email'])) {
+			//Email
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'E-Mail (laboral):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionLaboral']['email'], $this->borde, 1, 'L', false);
+		}
+		
+		
+	}
+
+	protected function titulo_seccion($titulo)
+	{
+		$this->setFont('Times', 'BU', ($this->fuente_tamanio + 2));
+		$this->Cell($this->ancho_hoja, $this->alto_linea, $titulo, $this->borde, 1, 'L', false);
+		$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+	}
+
+	/**
+	 * Retorna el ancho que queda en la hoja despues de imprimir la etiqueta
+	 * @return int
+	 */
+	private function getAnchoData()
+	{
+		return $this->ancho_hoja - $this->ancho_etiqueta;
+	}
+
+	function mostrar()
+	{
+		$this->Output('I',$this->nombre_archivo.'.pdf');
+	}
+}
+?>

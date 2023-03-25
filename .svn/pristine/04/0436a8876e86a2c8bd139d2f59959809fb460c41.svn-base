@@ -1,0 +1,67 @@
+<style>
+
+	.tabla_subcriterios {
+	    width: 80%;
+	    margin: 10px auto;
+	}
+
+	.tabla_subcriterios tr:nth-child(odd){
+		background-color: #efefef;
+	}
+
+	.criterio_descripcion{
+		padding:  0px 25px 0px 10px;
+	}
+
+	.referencia{
+		font-size: 1.1rem;
+	    color: #555;
+	    padding: 1px 0px 10px 10px;
+	}
+
+	input[type="number"]{
+		font-size: 1.6rem;
+	    max-width: 70px;
+	    text-align: center;
+	}
+	.total_criterio{
+		background-color: #b8ffc4;
+		color: #706363;
+		font-size: 1.7rem;
+		font-weight: bold;
+		padding: 7px 50px;
+		text-align: right;
+	}
+</style>
+<?php extract($datos); ?>
+<div>
+
+	<?php foreach ($criterios_evaluacion as $criterio): ?>
+		<fieldset>
+			<legend><?php echo $criterio['criterio_evaluacion']; ?> (Máximo <?php echo $criterio['puntaje_maximo']; ?>)</legend>
+			
+			<table class="tabla_subcriterios">
+			<?php foreach ($criterio['subcriterios_evaluacion'] as $subcriterio) : ?>
+					<tr>
+						<td class="criterio_descripcion"><?php echo $subcriterio['descripcion']; ?></td>
+						<td><input type="number" name=""></td>
+					</tr>
+					<tr>
+						<td colspan="2" class="referencia"><?php echo $subcriterio['referencia']; ?></td>
+					</tr>
+			<?php endforeach ?>
+			</table>
+			<div class="total_criterio">
+				Total asignado: <span id="total_<?php echo $criterio['id_criterio_evaluacion']; ?>">0</span> puntos.
+			</div>
+		</fieldset>
+	<?php endforeach ?>
+	
+	
+</div>
+[dep id=form_evaluacion_criterios]
+<br>
+[dep id=form_evaluacion_fijo]
+<br>
+[dep id=form_evaluadores]
+<br>

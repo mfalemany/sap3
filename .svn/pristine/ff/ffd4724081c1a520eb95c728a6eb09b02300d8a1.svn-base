@@ -1,0 +1,264 @@
+<?php
+class ci_evaluacion_informes extends sap_ci
+{
+	protected $area_conoc;
+	protected $ruta_base_documentos;
+	protected $url_base_documentos;
+	private $hay_plazo_habilitado;
+	private $seleccion;
+	private $detalles_beca;
+	protected $s__filtro;
+
+
+	//-----------------------------------------------------------------------------------
+	//---- Configuraciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf()
+	{
+		//Se obtiene la base de documentos por única vez.
+		$this->ruta_base_documentos = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('ruta_base_documentos');
+		$this->url_base_documentos = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos');
+		$this->hay_plazo_habilitado = (count(toba::consulta_php('co_becas_informes')->get_plazos(TRUE, 'E', FALSE)) > 0);
+		
+		if($this->soy_admin()){
+			return;
+		}
+
+		if (in_array('integrante_junta_coordinadora',toba::usuario()->get_perfiles_funcionales()) ){
+			return;
+		}
+
+		// TODO: Sacar esto despues que la Junta Coordinadora evalúe informes
+		die;
+
+		if( ! in_array('integrante_comision_asesora',toba::usuario()->get_perfiles_funcionales()) ){
+			throw new toba_error('Usted no es integrante de alguna Comisión Asesora. No puede evaluar informes de becas.');
+		}  
+		if (!$this->soy_admin()) {
+			$usuario = toba::usuario()->get_id();
+			$this->area_conoc = toba::consulta_php('co_comision_asesora')->get_area_conocimiento_evaluador($usuario);
+			if (!$this->area_conoc) {
+				//Puede tener el perfil de "integrante_comision_asesora" (y pasar el if anterior), pero no fue asignado a ninguna comisión
+				throw new toba_error('Usted no es integrante de alguna Comisión Asesora. No puede evaluar informes de becas.');
+			}
+		}
+	
+	}
+	//-----------------------------------------------------------------------------------
+	//---- Eventos del CI ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------	
+	function evt__guardar()
+	{
+		try {
+			$this->get_datos()->sincronizar();
+			$this->get_datos()->resetear();
+			$this->set_pantalla('pant_becarios');
+			toba::notificacion()->agregar('Evaluación registrada con éxito!','info');
+		} catch (toba_error_db $e) {
+			toba::notificacion()->error('Ocurrió un error al intentar guardar la evaluación',$e->get_mensaje_motor());
+		}
+	}
+
+	function evt__volver()
+	{
+		$this->get_datos()->resetear();
+		$this->set_pantalla('pant_becarios');
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_filtro ------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_filtro(sap_ei_formulario $form)
+	{
+		if(isset($this->s__filtro) && $this->s__filtro){
+			$form->set_datos($this->s__filtro);
+		}
+
+		if (!$this->soy_admin()) {
+			$form->desactivar_efs(['id_area_conocimiento']);
+		}
+
+		$form->ef('id_convocatoria')->set_estado(4);
+		$form->set_solo_lectura(['id_convocatoria']);
+	}
+
+	function evt__form_filtro__filtrar($datos)
+	{
+		$this->s__filtro = $datos;
+	}
+
+	function evt__form_filtro__cancelar()
+	{
+		unset($this->s__filtro);
+	}
+
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_becas ---------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_becas(sap_ei_cuadro $cuadro)
+	{
+		$filtro = ($this->area_conoc) ? array('id_area_conocimiento'=>$this->area_conoc) : array();
+		if(isset($this->s__filtro)){
+			$filtro = array_merge($filtro,$this->s__filtro);
+		}
+		$filtro['con_informe_presentado'] = true;
+
+		// TODO: Sacar esto despues que la Junta Coordinadora evalúe informes
+		$filtro['id_tipo_convocatoria'] = 4;
+		$cuadro->set_datos(toba::consulta_php('co_becas')->get_becas_otorgadas($filtro));
+	}
+
+	function evt__cu_becas__seleccion($seleccion)
+	{
+		$this->seleccion = $seleccion;
+		$this->detalles_beca = toba::consulta_php('co_becas')->get_detalles_beca(
+			$this->seleccion['id_convocatoria'],
+			$this->seleccion['id_tipo_beca'],
+			$this->seleccion['nro_documento']
+		);
+		$this->set_pantalla('pant_informes');
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_informes ------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_informes(sap_ei_cuadro $cuadro)
+	{
+		$det = $this->detalles_beca;
+		$titulo = sprintf('Becario: %s.<br>Beca de %s (%s) dirigida por %s.<br>Periodo de la beca: %s al %s',
+			$det['postulante'],
+			strtolower($det['tipo_beca']),
+			$det['convocatoria'],
+			$det['director'],
+			date('d-m-Y',strtotime($det['fecha_desde'])), 
+			date('d-m-Y',strtotime($det['fecha_hasta']))
+		);
+		$cuadro->set_titulo($titulo);
+		$cuadro->desactivar_modo_clave_segura();
+		if(! $this->soy_admin() ){
+			if(! $this->hay_plazo_habilitado){
+				$cuadro->agregar_notificacion('No hay periodo de evaluación abierto en este momento','warning');
+				return;
+			}
+		}
+		$informes = toba::consulta_php('co_becas_informes')->get_informes_presentados($this->seleccion,TRUE);
+		if($informes > 0){
+			$cuadro->set_datos($informes);	
+		}
+	}
+
+	function conf_evt__cu_informes__evaluar(toba_evento_usuario $evento,$fila)
+	{
+		if( ! $this->hay_plazo_habilitado){
+			$evento->desactivar();
+			return;
+		}
+	}
+
+	function evt__cu_informes__evaluar($seleccion)
+	{
+		$this->seleccion = $seleccion;
+		$this->get_datos()->cargar(['id_informe' => $seleccion['id_informe']]);
+		$this->set_pantalla('pant_evaluacion');
+	}
+	
+	function conf_evt__cu_informes__ver_informe(toba_evento_usuario $evento, $fila)
+	{
+		$params = explode('||',$evento->get_parametros());
+		if(file_exists($this->get_ruta_informe($params))){
+			$evento->activar();
+		}else{
+			$evento->desactivar();
+		}
+	}
+
+	function servicio__ver_informe(){
+		$params = array_values(toba::memoria()->get_parametros());
+		if(file_exists($this->get_ruta_informe($params))){
+			$this->no_cache();
+			header("Location: ".utf8_encode($this->get_ruta_informe($params,TRUE)));
+		}else{
+			echo 'Lo sentimos... No hemos encontrado el informe seleccionado.';
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_evaluacion --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_evaluacion(sap_ei_formulario $form)
+	{
+		//Se obtiene la lista de integrantes de la comisión (para ser seleccionados)
+		$inscripcion          = toba::consulta_php('co_inscripcion_conv_beca')->get_inscripcion($this->seleccion['id_convocatoria'], $this->seleccion['id_tipo_beca'], $this->seleccion['nro_documento']);
+		$integrantes_comision = toba::consulta_php('co_comision_asesora')->get_integrantes_ultima_comision_conformada([
+			'id_area_conocimiento' => $inscripcion['id_area_conocimiento']
+		]);
+		$integrantes_comision = array_column($integrantes_comision, 'evaluador', 'nro_documento');
+		$form->ef('evaluadores')->set_opciones($integrantes_comision);
+		
+		//Si existe una evaluación, se carga
+		$datos = $this->get_datos('informe_evaluacion')->get();
+	
+		//Verifico si se permite la evaluación de informes antiguos
+		if (!empty($datos['fecha'])) {
+			$fecha_eval          = new DateTime($datos['fecha']);
+			$fecha_actual        = new DateTime();
+			$tiempo_transcurrido = $fecha_eval->diff($fecha_actual);
+			if ($tiempo_transcurrido->days > 60) {
+				$form->set_solo_lectura();
+				$form->agregar_notificacion('No se pueden modificar evaluaciones que hayan sido realizadas hace mas de 60 días.');
+				if ($this->pantalla()->existe_evento('guardar')) {
+					$this->pantalla()->eliminar_evento('guardar');
+				}
+			}
+		}
+
+		if ($datos) {
+			$form->set_datos($datos);
+		}
+
+		// TODO: Sacar esto despues que la Junta Coordinadora evalúe informes
+		$form->desactivar_efs('evaluadores');
+	}
+
+	function evt__form_evaluacion__modificacion($datos)
+	{
+		if( ! (isset($datos['nro_documento_evaluador']) && $datos['nro_documento_evaluador'])){
+			$datos['usuario_evaluo'] = toba::usuario()->get_id();
+		}
+
+		// TODO: Sacar esto despues que la Junta Coordinadora evalúe informes
+		$datos['evaluadores'] = toba::usuario()->get_id();
+
+		$this->get_datos('informe_evaluacion')->set($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Auxiliares -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	/**
+	 * Dependiendo del segundo parámetro, retorna:
+	 * - FALSE: La ruta del sistema de archivos donde están los documentos (desde la raíz)
+	 * - TRUE: la url accesible a los documentos
+	 */
+	private function get_ruta_informe($informe,$formato_url=FALSE)
+	{
+		list($id_conv,$id_tipo_beca,$nro_documento,$id_informe,$nro_informe) = $informe;
+		$ruta = sprintf("/becas/doc_por_convocatoria/%s/%s/%s/informes/%s.pdf",$id_conv,$id_tipo_beca,$nro_documento,$nro_informe);
+		return ($formato_url) ? $this->url_base_documentos.$ruta : $this->ruta_base_documentos.$ruta;
+	}
+
+	protected function get_datos($tabla = NULL)
+	{
+		return $tabla ? $this->dep('datos')->tabla($tabla) : $this->dep('datos');
+	}
+
+
+}
+?>

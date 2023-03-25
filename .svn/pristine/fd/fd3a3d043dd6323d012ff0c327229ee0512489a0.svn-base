@@ -1,0 +1,98 @@
+<?php
+class ci_reporte_informes extends sap_ci
+{
+	protected $s__filtro;
+	//-----------------------------------------------------------------------------------
+	//---- cu_informes_estado -----------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_informes_estado(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$filtro = (isset($this->s__filtro)) ? $this->s__filtro : array();
+		$cuadro->set_datos(toba::consulta_php('co_becas')->get_informes($filtro));
+	}
+
+	function conf_evt__cu_informes_estado__ver_informe(toba_evento_usuario $evento, $fila)
+	{
+
+		$params = explode('||',$evento->get_parametros());
+		//$params[3] tiene 'id_informe'
+		if(isset($params[3]) && $params[3]){
+			$evento->mostrar();
+		}else{
+			$evento->ocultar();
+		}
+	}
+
+	function conf_evt__cu_informes_estado__ver_evaluacion(toba_evento_usuario $evento, $fila)
+	{
+		$params = explode('||',$evento->get_parametros());
+		//params[5] tiene "resultado_eval" 
+		if(isset($params[5]) && $params[5]){
+			$evento->mostrar();
+		}else{
+			$evento->ocultar();
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- filtro -----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__filtro(sap_ei_formulario $form)
+	{
+		if(isset($this->s__filtro)){
+			$form->set_datos($this->s__filtro);
+		}
+	}
+
+	function evt__filtro__filtrar($datos)
+	{
+		$this->s__filtro = $datos;
+	}
+
+	function evt__filtro__cancelar()
+	{
+		unset($this->s__filtro);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- SERVICIOS --------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function servicio__ver_informe()
+	{
+		$params = toba::memoria()->get_parametros();
+		
+		//Rutas
+		$base = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('ruta_base_documentos');
+		$url = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos');
+		
+		//Armo el path del informe
+		$path_informe = sprintf("/becas/doc_por_convocatoria/%s/%s/%s/informes/%s.pdf",$params['id_convocatoria'],$params['id_tipo_beca'],$params['nro_documento'],$params['nro_informe']);
+
+		if(file_exists($base . $path_informe)){
+			$this->no_cache();
+			header('Location: ' . $url . $path_informe);
+		}else{
+			die('Documento no encontrado');
+		}
+		
+	}
+
+	function servicio__ver_evaluacion()
+	{
+		$params = toba::memoria()->get_parametros();
+		$datos = toba::consulta_php('co_becas')->get_detalles_informe($params['id_informe']);
+
+		$punto = toba::puntos_montaje()->get('proyecto');
+		toba_cargador::cargar_clase_archivo($punto->get_id(), 'generadores_pdf/becas/evaluacion_informe_beca.php' , 'sap' );
+		
+		$reporte = new Evaluacion_informe_beca($datos);
+		
+		$reporte->mostrar();
+	}
+
+
+}
+?>

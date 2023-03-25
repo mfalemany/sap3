@@ -1,0 +1,429 @@
+<?php
+class co_proyectos_informes
+{
+	/**
+	 * Determina si, para un proyecto determinado, ya existe algun informe abierto (que está siendo cargado), para mostrar u ocultar eventos de tipo "Nuevo informe" y evitar que se carguen mas de un informe para un mismo proyecto
+	 */
+	function existe_informe_abierto($id_proyecto)
+	{
+		$id = quote($id_proyecto);
+		$sql =  "SELECT id_informe 
+					FROM sap_proyectos_pi_informe 
+					WHERE estado = 'A' 
+					AND id_proyecto = $id
+					UNION
+					SELECT id_informe 
+					FROM sap_proyectos_pdts_informe 
+					WHERE estado = 'A' 
+					AND id_proyecto = $id LIMIT 1";
+		return (count(toba::db()->consultar($sql)) > 0);
+	}
+
+	function get_becarios_externos($tipo,$filtro)
+	{
+		$where = array();
+		$sql = "SELECT bec.*, tip.tipo_beca_externa,
+				per.apellido||', '||per.nombres AS becario,
+				dir.apellido||', '||dir.nombres AS director,
+				(EXTRACT(year FROM fecha_hasta) - EXTRACT(year FROM fecha_desde)) AS duracion
+				FROM sap_becario_externo AS bec
+				LEFT JOIN sap_tipos_beca_externa AS tip ON tip.id_tipo_beca_externa = bec.id_tipo_beca_externa
+				LEFT JOIN sap_personas AS per ON per.nro_documento = bec.nro_documento
+				LEFT JOIN sap_personas AS dir ON dir.nro_documento = bec.nro_documento_dir
+				ORDER BY per.apellido, per.nombres";
+
+		if(isset($filtro['id_informe']) && $filtro['id_informe']){
+			$where[] = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_becario_ext 
+								WHERE id_becario_externo = bec.id_becario_externo
+								AND id_informe = " . quote($filtro['id_informe']) . ")";
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+
+	}
+	
+	function get_detalles_informe($tipo,$id_informe)
+	{
+		$sql = "SELECT * 
+				FROM sap_proyectos_".$tipo."_informe 
+				WHERE id_informe = ".quote($id_informe);
+		return toba::db()->consultar_fila($sql);
+	}
+
+	function get_direcciones_tesis($tipo, $filtro = array())
+	{
+		$where = array();
+		$sql = "SELECT tes.*,et.etapa_tesis,
+				per.apellido||', '||per.nombres AS tesista,
+				dir.apellido||', '||dir.nombres AS director
+				FROM sap_direccion_tesis AS tes
+				LEFT JOIN sap_etapa_tesis AS et ON et.id_etapa_tesis = tes.id_etapa_tesis
+				LEFT JOIN sap_personas AS per ON per.nro_documento = tes.nro_documento_tesista
+				LEFT JOIN sap_personas AS dir ON dir.nro_documento = tes.nro_documento_dir";
+
+		if(isset($filtro['id_informe']) && $filtro['id_informe']){
+			$where[] = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_dir_tesis 
+								WHERE id_direccion_tesis = tes.id_direccion_tesis
+								AND id_informe = " . quote($filtro['id_informe']) . ")";
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+
+	}
+
+	
+
+
+	function get_etapas_tesis($solo_activos = TRUE)
+	{
+		$condicion = ($solo_activos) ? " WHERE activo = 'S'" : "";
+		return toba::db()->consultar("SELECT * FROM sap_etapa_tesis ".$condicion);
+	}
+
+	function get_evaluaciones($id_informe,$tipo)
+	{
+		$sql = "SELECT * 
+				FROM sap_proyecto_integrante_eval AS eval
+				WHERE EXISTS (SELECT * FROM sap_".$tipo."_inf_integ_eval WHERE id_informe = ".quote($id_informe)." AND id_evaluacion = eval.id_evaluacion)";
+		return toba::db()->consultar($sql);
+	}
+
+	function get_informes($tipo, $filtro = array())
+	{
+		$where = array();
+		$sql = "SELECT pif.*,
+				'$tipo' as tipo_proyecto, 
+				CASE WHEN tip.tipo_informe IS NULL THEN 'Presentado en formato papel' 
+				     ELSE tip.tipo_informe END as tipo_informe
+			FROM sap_proyectos_".$tipo."_informe AS pif
+			LEFT JOIN sap_proy_tipo_informe AS tip ON tip.id_tipo_informe = pif.id_tipo_informe";
+		
+		if(isset($filtro['id_proyecto']) && $filtro['id_proyecto']){
+			$where[] = "id_proyecto = " . quote($filtro['id_proyecto']);
+		}
+		if(isset($filtro['id_informe']) && $filtro['id_informe']){
+			$where[] = "id_informe = " . quote($filtro['id_informe']);
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where); 
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	//Retorna un listado completo de informes, tanto de PI, como de PDTS. La idea es que ofrezca los datos básicos y sirva solo para selección. Luego, se debera usar otro método para obtener mas detalles del informe seleccionado
+	function get_informes_cuadro($filtro = array())
+	{
+		$where = array();
+		$cte = "WITH directores AS (SELECT nro_documento, id_proyecto
+					FROM sap_proyecto_integrante AS pi
+					WHERE pi.id_funcion = (
+					    SELECT id_funcion 
+					    FROM sap_proyecto_integrante_funcion 
+					    WHERE identificador_perfil = 'D'
+					)
+					AND pi.fecha_desde = (
+					    SELECT MAX(fecha_desde) 
+					    FROM sap_proyecto_integrante 
+					    WHERE id_proyecto = pi.id_proyecto 
+					    AND id_funcion = pi.id_funcion
+				))";
+
+		$sql_pi = "SELECT id_informe, id_proyecto, 'pi' AS tipo_desc, '0' AS tipo, fecha_presentacion, id_tipo_informe, presentado_por,estado, estado AS estado_inf
+				FROM sap_proyectos_pi_informe";
+		$sql_pdts = "SELECT id_informe, id_proyecto, 'pdts' AS tipo_desc, 'D' AS tipo, fecha_presentacion, id_tipo_informe, presentado_por,estado, estado AS estado_inf
+				FROM sap_proyectos_pdts_informe";
+		
+		//Junto ambas en una sola consulta
+		$sql = $cte . " SELECT inf.id_informe, 
+							proy.id AS id_proyecto, 
+							proy.descripcion,
+							proy.codigo, 
+							ac.nombre AS area_conocimiento_desc,
+							ti.tipo_informe, 
+							inf.tipo, 
+							inf.tipo_desc, 
+							inf.fecha_presentacion, 
+							inf.presentado_por, 
+							per.apellido||', '||per.nombres AS presentado_por_desc, 
+							dir.nro_documento AS director,
+							dir.apellido||', '||dir.nombres AS director_desc, 
+							CASE inf.estado_inf WHEN 'A' THEN 'Abierto' WHEN 'C' THEN 'Cerrado' END AS estado
+				FROM (".$sql_pi." UNION ".$sql_pdts.") AS inf
+				LEFT JOIN sap_proyectos AS proy ON proy.id = inf.id_proyecto
+				LEFT JOIN directores AS dirs ON dirs.id_proyecto = proy.id
+				LEFT JOIN sap_proy_tipo_informe AS ti ON ti.id_tipo_informe = inf.id_tipo_informe
+				LEFT JOIN sap_personas AS per ON per.nro_documento = inf.presentado_por
+				LEFT JOIN sap_personas AS dir ON dir.nro_documento = dirs.nro_documento
+				LEFT JOIN sap_area_conocimiento AS ac ON ac.id = proy.sap_area_conocimiento_id";
+
+		if(isset($filtro['codigo'])){
+			$where[] = "proy.codigo ILIKE ".quote('%'.$filtro['codigo'].'%'); 
+		}
+		if(isset($filtro['integrante'])){
+			$where[] = "EXISTS (SELECT * 
+							FROM sap_proyecto_integrante 
+							WHERE id_proyecto = proy.id
+							AND nro_documento IN (
+								SELECT nro_documento 
+								FROM sap_personas 
+								WHERE (apellido ILIKE quitar_acentos(".quote("%".$filtro['integrante']."%").") 
+								OR nombres ILIKE quitar_acentos(".quote("%".$filtro['integrante']."%")."))
+							))"; 
+		}
+		if(isset($filtro['estado'])){
+			$where[] = "inf.estado = ".quote($filtro['estado']); 
+		}
+		if(isset($filtro['anio_presentacion'])){
+			$where[] = "EXTRACT(year FROM inf.fecha_presentacion) = ".quote($filtro['anio_presentacion']); 
+		}
+		//Se considera una fecha a partir de la cual se cargaron los informes por sistema.
+		if( ! (isset($filtro['incluir_antiguos']) && $filtro['incluir_antiguos'] == 1) ){
+			$where[] = "(inf.fecha_presentacion >= '2021-06-15' OR inf.fecha_presentacion IS NULL)";
+		}
+
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	
+
+	function get_metas_alcanzadas($id_informe)
+	{
+		$sql = "SELECT met.id_obj_especifico_tarea, met.mes, met.anio, tar.tarea, obj.obj_especifico
+				FROM sap_pdts_inf_meta_alc AS met
+				LEFT JOIN sap_obj_especifico_tarea AS tar 
+					ON tar.id_obj_especifico_tarea = met.id_obj_especifico_tarea
+				LEFT JOIN sap_proyecto_obj_especifico AS obj 
+					ON obj.id_obj_especifico = tar.id_obj_especifico
+				WHERE met.id_informe = ".quote($id_informe);
+		return toba::db()->consultar($sql);
+	}
+
+	//retorna todos los detalles de un informe, ideal para reportes 
+	function get_reporte_informe($tipo, $id_informe)
+	{
+		$sql = "SELECT inf.*, ti.tipo_informe, per.apellido||', '||per.nombres AS presentado_por_desc 
+				FROM sap_proyectos_{$tipo}_informe AS inf
+				LEFT JOIN sap_proy_tipo_informe AS ti ON ti.id_tipo_informe = inf.id_tipo_informe
+				LEFT JOIN sap_personas AS per ON per.nro_documento = inf.presentado_por
+				WHERE id_informe = ".quote($id_informe)." LIMIT 1";
+		$respuesta['informe'] = toba::db()->consultar_fila($sql);
+
+		$sql = "SELECT codigo, descripcion, fecha_desde, fecha_hasta FROM sap_proyectos WHERE id = ".$respuesta['informe']['id_proyecto']." LIMIT 1";
+		$respuesta['proyecto'] = toba::db()->consultar_fila($sql);
+
+		$sql = "SELECT det_eva.id_informe, per.apellido||', '||per.nombres AS integrante, per.nro_documento, CASE eva.evaluacion WHEN 'S' THEN 'Satisfactorio' WHEN 'N' THEN 'No satisfactorio' END AS evaluacion
+				FROM sap_{$tipo}_inf_integ_eval AS det_eva
+				LEFT JOIN sap_proyecto_integrante_eval AS eva ON eva.id_evaluacion = det_eva.id_evaluacion
+				LEFT JOIN sap_personas AS per ON per.nro_documento = eva.nro_documento
+				WHERE det_eva.id_informe = ".quote($id_informe)."
+				ORDER BY integrante ";
+		$respuesta['eval_integrantes'] = toba::db()->consultar($sql);
+
+		$sql = "SELECT pub.titulo, pub.anio, pub.url, tp.tipo_publicacion, pub.info_complementaria,
+					CASE pub.estado WHEN 'E' THEN 'Enviado' WHEN 'A' THEN 'Aceptado' WHEN 'P' THEN 'Publicado' END AS 	estado_desc, 
+					(SELECT array_to_string(array_agg(p.apellido||', '||p.nombres),' / ') 
+					 FROM sap_trab_publicacion_autor AS a
+					 LEFT JOIN sap_personas AS p ON p.nro_documento = a.nro_documento
+					 WHERE a.id_trab_publicacion = pub.id_trab_publicacion) AS autores
+
+				FROM sap_{$tipo}_inf_trab_pub AS inf_trab
+				LEFT JOIN sap_trab_publicacion AS pub ON pub.id_trab_publicacion = inf_trab.id_trab_publicacion
+				LEFT JOIN sap_tipo_publicacion AS tp ON tp.id_tipo_publicacion = pub.id_tipo_publicacion
+				WHERE inf_trab.id_informe = ".quote($id_informe)." ORDER BY anio DESC";
+		$respuesta['trab_publicacion'] = toba::db()->consultar($sql);
+
+		$sql = "SELECT dif.titulo, url, dif.evento, dif.anio, dif.info_complementaria,
+					CASE dif.alcance WHEN 'R' THEN 'Regional' WHEN 'N' THEN 'Nacional' WHEN 'I' THEN 'Internacional' END AS alcance_desc,
+					(SELECT array_to_string(array_agg(p.apellido||', '||p.nombres),' / ') 
+					 FROM sap_trab_difundido_autor AS a
+					 LEFT JOIN sap_personas AS p ON p.nro_documento = a.nro_documento
+					 WHERE a.id_trab_difundido = dif.id_trab_difundido) AS autores
+
+				FROM sap_{$tipo}_inf_trab_dif AS inf_trab
+				LEFT JOIN sap_trab_difundido AS dif ON dif.id_trab_difundido = inf_trab.id_trab_difundido
+				WHERE inf_trab.id_informe = " . quote($id_informe)." ORDER BY anio DESC";
+		$respuesta['trab_difundido'] = toba::db()->consultar($sql);
+
+		$sql = "SELECT transf.descripcion, transf.destinatario, tt.tipo_transferencia, transf.info_complementaria,
+					(SELECT array_to_string(array_agg(p.apellido||', '||p.nombres),' / ') 
+					 FROM sap_trab_transferido_autor AS a
+					 LEFT JOIN sap_personas AS p ON p.nro_documento = a.nro_documento
+					 WHERE a.id_trab_transferido = transf.id_trab_transferido) AS autores
+				FROM sap_{$tipo}_inf_trab_transf AS inf_trab
+				LEFT JOIN sap_trab_transferido AS transf ON transf.id_trab_transferido = inf_trab.id_trab_transferido
+				LEFT JOIN sap_tipo_transferencia AS tt ON tt.id_tipo_transferencia = transf.id_tipo_transferencia
+				WHERE inf_trab.id_informe = ".quote($id_informe);
+		$respuesta['trab_transferido'] = toba::db()->consultar($sql);
+
+		$sql = "SELECT '('||per.nro_documento||') '||per.apellido||', '||per.nombres AS tesista,
+    				'('||dir.nro_documento||') '||dir.apellido||', '||dir.nombres AS director,
+    				tesis.carrera, tesis.titulo, et.etapa_tesis
+				FROM sap_{$tipo}_inf_dir_tesis AS inf_dir
+				LEFT JOIN sap_direccion_tesis AS tesis ON tesis.id_direccion_tesis = inf_dir.id_direccion_tesis
+				LEFT JOIN sap_personas AS per ON per.nro_documento = tesis.nro_documento_tesista
+				LEFT JOIN sap_personas AS dir ON dir.nro_documento = tesis.nro_documento_dir
+				LEFT JOIN sap_etapa_tesis AS et ON et.id_etapa_tesis = tesis.id_etapa_tesis
+				WHERE inf_dir.id_informe = ".quote($id_informe);
+		$respuesta['direccion_tesis'] = toba::db()->consultar($sql);
+
+		//Detalles de becarios de CyT
+		$filtro = array('id_proyecto' => $respuesta['informe']['id_proyecto']);
+		$respuesta['becarios'] = toba::consulta_php('co_becas')->get_becarios($filtro);
+
+		
+		//Detalles de los becarios externos (cargados por el usuario)
+		$respuesta['becarios_externos'] = toba::consulta_php('co_proyectos_informes')->get_becarios_externos($tipo,array('id_informe'=>$id_informe));
+
+		//Si es un PDTS, se agregan las Metas Alcanzadas.
+		if($tipo == 'pdts'){
+			$respuesta['metas'] = toba::consulta_php('co_proyectos_informes')->get_metas_alcanzadas($id_informe);
+		}
+		return $respuesta;
+	}
+
+	function get_tipos_beca_externa()
+	{
+		return toba::db()->consultar('SELECT * FROM sap_tipos_beca_externa ORDER BY tipo_beca_externa');
+	}
+
+	function get_tipos_informe()
+	{
+		return toba::db()->consultar("SELECT * FROM sap_proy_tipo_informe WHERE activo = 'S'");
+	}
+
+	function get_tipos_publicacion()
+	{
+		return toba::db()->consultar("SELECT * FROM sap_tipo_publicacion WHERE disponible_proyectos = 'S'");
+	}
+
+	function get_trabajos_difundidos($tipo, $filtro = array()){
+		$where = array();
+		$sql = "SELECT dif.*,
+						CASE dif.alcance WHEN 'R' THEN 'Regional' WHEN 'N' THEN 'Nacional' WHEN 'I' THEN 'Internacional' END AS alcance_desc 
+				FROM sap_trab_difundido AS dif
+				ORDER BY anio DESC";
+		if(isset($filtro['id_informe']) && $filtro['id_informe']){
+			$where[] = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_trab_dif 
+								WHERE id_trab_difundido = dif.id_trab_difundido
+								AND id_informe = " . quote($filtro['id_informe']) . ")";
+		}
+		/* 
+		 *	El filtro previos_a_id_informe se utiliza para obtener todos los datos a informes previos a 'id_informe'
+		 *	Se utiliza para (generalmente) para mostrar al usuario informaciòn que cargó en informes anteriores al actual (al que está cargando)
+		 */
+		if(isset($filtro['previos_a_id_informe'])){
+			$informe = toba::db()->consultar_fila("SELECT id_proyecto FROM sap_proyectos_".$tipo."_informe WHERE id_informe = " . quote($filtro['previos_a_id_informe']));
+			$where[]  = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_trab_dif 
+								WHERE id_trab_difundido = dif.id_trab_difundido
+								AND id_informe < " . quote($filtro['previos_a_id_informe']) . "
+								AND id_informe IN (SELECT id_informe FROM sap_proyectos_".$tipo."_informe WHERE id_proyecto = " . quote($informe['id_proyecto']) . "))";
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	function get_trabajos_publicaciones($tipo, $filtro = array())
+	{
+		$where = array();
+		$sql = "SELECT pub.*,
+					CASE pub.estado WHEN 'E' THEN 'Enviado' WHEN 'A' THEN 'Aceptado' WHEN 'P' THEN 'Publicado' END AS estado_desc,
+					tp.tipo_publicacion
+				FROM sap_trab_publicacion AS pub
+				LEFT JOIN sap_tipo_publicacion AS tp ON tp.id_tipo_publicacion = pub.id_tipo_publicacion
+				ORDER BY anio DESC";
+		if(isset($filtro['id_informe']) && $filtro['id_informe']){
+			$where[] = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_trab_pub 
+								WHERE id_trab_publicacion = pub.id_trab_publicacion 
+								AND id_informe = " . quote($filtro['id_informe']) . ")";
+		}
+		/* 
+		 *	El filtro previos_a_id_informe se utiliza para obtener todos los datos a informes previos a 'id_informe'
+		 *	Se utiliza para (generalmente) para mostrar al usuario informaciòn que cargó en informes anteriores al actual (al que está cargando)
+		 */
+		if(isset($filtro['previos_a_id_informe'])){
+			$informe = toba::db()->consultar_fila("SELECT id_proyecto FROM sap_proyectos_".$tipo."_informe WHERE id_informe = " . quote($filtro['previos_a_id_informe']));
+			$where[]  = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_trab_pub 
+								WHERE id_trab_publicacion = pub.id_trab_publicacion 
+								AND id_informe < " . quote($filtro['previos_a_id_informe']) . "
+								AND id_informe IN (SELECT id_informe FROM sap_proyectos_".$tipo."_informe WHERE id_proyecto = " . quote($informe['id_proyecto']) . "))";
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+
+	}
+
+
+
+	function get_trabajos_transferidos($tipo, $filtro = array()){
+		$where = array();
+		$sql = "SELECT transf.*,tip.tipo_transferencia
+				FROM sap_trab_transferido AS transf
+				LEFT JOIN sap_tipo_transferencia AS tip ON tip.id_tipo_transferencia = transf.id_tipo_transferencia";
+		if(isset($filtro['id_informe']) && $filtro['id_informe']){
+			$where[] = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_trab_transf 
+								WHERE id_trab_transferido = transf.id_trab_transferido
+								AND id_informe = " . quote($filtro['id_informe']) . ")";
+		}
+		/* 
+		 *	El filtro previos_a_id_informe se utiliza para obtener todos los datos a informes previos a 'id_informe'
+		 *	Se utiliza para (generalmente) para mostrar al usuario informaciòn que cargó en informes anteriores al actual (al que está cargando)
+		 */
+		if(isset($filtro['previos_a_id_informe'])){
+			$informe = toba::db()->consultar_fila("SELECT id_proyecto FROM sap_proyectos_".$tipo."_informe WHERE id_informe = " . quote($filtro['previos_a_id_informe']));
+			$where[]  = "EXISTS (SELECT * 
+								FROM sap_".$tipo."_inf_trab_transf 
+								WHERE id_trab_transferido = transf.id_trab_transferido 
+								AND id_informe < " . quote($filtro['previos_a_id_informe']) . "
+								AND id_informe IN (SELECT id_informe FROM sap_proyectos_".$tipo."_informe WHERE id_proyecto = " . quote($informe['id_proyecto']) . "))";
+		}
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	/**
+	 * Retorna TRUE si el informe fue presentado completamente via SAP (antes se presentaban en PDF y se lo presentaba a los evaluadores)
+	 * @param  integer $id_informe 
+	 * @return boolean
+	 */
+	function informe_presentado_en_sap($id_informe)
+	{
+		//Se considera que fue presentado por SAP si se presentó luego del 10 de junio de 2021.
+		$sql = "SELECT count(*) AS cantidad FROM sap_proyectos_pi_informe WHERE id_informe = " . quote($id_informe) . "AND fecha_presentacion IS NOT NULL AND fecha_presentacion > '2021-06-10' LIMIT 1";
+		$resultado = toba::db()->consultar_fila($sql);
+		return ($resultado['cantidad'] > 0);
+	}
+
+	function marcar_abierto($id_informe)
+	{
+		$sql = 'UPDATE sap_proyectos_pi_informe SET estado = \'A\' WHERE id_informe = ' . quote($id_informe);
+		return toba::db()->ejecutar($sql);
+	}
+
+
+
+	
+
+
+}
+
+?>

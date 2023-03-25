@@ -1,0 +1,450 @@
+<?php 
+class Reporte_proyecto extends FPDF
+{
+	protected $datos;
+
+	function __construct($datos)
+	{
+		parent::__construct();
+		//El reporte se muestra completo, salvo que se especifique lo contrario
+		$datos['ver_completo'] = (isset($datos['ver_completo'])) ? $datos['ver_completo'] : TRUE;
+		$this->datos = $datos;
+		//Formato A4 y Vertical
+		$this->AddPage('Portrait','A4');
+		$this->SetAutoPageBreak(true,30);
+
+		/* ======== ENCABEZADO: DENOMINACION DEL PROYECTO =========================== */
+		$this->setXY(10,40);
+		$this->imprimir_titulo_cuadro('Denominación');
+		$this->SetFont('arial','',8);
+		$this->SetTextColor(0,0,0);
+		$this->MultiCell(190,7,$this->datos['general']['descripcion'],1,'C',false);
+		$this->Ln();
+		/* =========================================================================== */
+
+		/* ========================= TIPO DE PROYECTO =============================== */
+		$this->setX(10);
+		$this->imprimir_titulo_cuadro('Tipo');
+		$this->SetFont('arial','',10);
+		switch ($datos['general']['tipo']) {
+			case '0':
+				$tipo_pi = $datos['especifico']['tipo_investigacion'];
+				if(isset($tipo_pi) && $tipo_pi){
+					$tipos = array('B'=>' Básica','A'=>' Aplicada');
+					$tipo_pi = (array_key_exists($tipo_pi, $tipos)) ? $tipos[$tipo_pi] : ' ' ; 
+				}
+				$this->MultiCell(190,7,'Proyecto de Investigación' . $tipo_pi,0,'C',false);
+				$this->Ln();
+				break;
+			case 'D':
+				$this->MultiCell(190,7,'Proyecto de Desarrollo Tecnológico y Social',0,'C',false);
+				$this->Ln();
+				break;
+			default:
+				$this->Ln();
+				break;
+		}
+		/* =========================================================================== */
+		
+
+
+		$datos['general']['duracion'] = date('Y',strtotime($datos['general']['fecha_hasta'])) - date('Y',strtotime($datos['general']['fecha_desde'])) + 1;
+
+		$this->integrantes($datos['integrantes']);
+		$this->Ln();
+		
+		$this->detalles_general($datos['general']);
+		$this->Ln();
+
+		//Si el reporte es llamado desde ámbitos públicos, no se muestran algunas cosas
+		if( ! $this->datos['ver_completo']) return;
+		
+		switch ($datos['general']['tipo']) {
+			case '0':
+				$this->detalles_pi($datos['especifico']);
+				break;
+			case 'D':
+				$this->detalles_pdts($datos['especifico']);
+
+				break;
+			default:
+				# code...
+				break;
+		}
+
+		
+
+		$this->Ln();
+
+		$this->presupuesto($datos['presupuesto']);
+		$this->Ln();
+
+		$this->objetivos($datos['objetivos']);
+		$this->Ln();
+
+		$this->cronograma($datos['general']);
+		$this->Ln();
+	}
+
+	function detalles_general($detalles)
+	{
+		/* ====================== DENOMINACION DEL GRUPO ============================ */
+		if(isset($detalles['denominacion_grupo']) && $detalles['denominacion_grupo']){
+			$this->imprimir_titulo_cuadro('Denominación del Grupo de Investigación');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['denominacion_grupo'],0,'J',false);
+			$this->Ln();
+		}
+		if(isset($detalles['dependencia_desc']) && $detalles['dependencia_desc']){
+			$this->imprimir_titulo_cuadro('Facultad/Instituto');
+			$this->SetFont('arial','',10);
+			$this->Cell(190,5,$detalles['dependencia_desc'],0,1,'C',false);
+			$this->Ln();
+		}
+		/* ====================== OBJETIVO GENERAL ============================ */
+		if(isset($detalles['objetivo_general']) && $detalles['objetivo_general']){
+			$this->imprimir_titulo_cuadro('Objetivo General');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['objetivo_general'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== RESUMEN ============================ */
+		if(isset($detalles['resumen']) && $detalles['resumen']){
+			$this->imprimir_titulo_cuadro('Resumen');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['resumen'],0,'J',false);
+			$this->Ln();
+		}
+		//Si el reporte es llamado desde ámbitos públicos, no se muestran algunas cosas
+		if( ! $this->datos['ver_completo']) return;
+
+		/* ====================== DESCRIPCION METODOLOGICA ============================ */
+		if(isset($detalles['descripcion_metodologica']) && $detalles['descripcion_metodologica']){
+			$this->imprimir_titulo_cuadro('Descripción Metodológica');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['descripcion_metodologica'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== ESTADO DEL CONOCIMIENTO ============================ */
+		if(isset($detalles['estado_conocimiento']) && $detalles['estado_conocimiento']){
+			$this->imprimir_titulo_cuadro('Estado del Conocimiento');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['estado_conocimiento'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== TRABAJOS PREVIOS ============================ */
+		if(isset($detalles['trabajos_previos']) && $detalles['trabajos_previos']){
+			$this->imprimir_titulo_cuadro('Trabajos Previos');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['trabajos_previos'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== BIBLIOGRAFÍA ============================ */
+		if(isset($detalles['bibliografia']) && $detalles['bibliografia']){
+			$this->imprimir_titulo_cuadro('Bibliografía');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['bibliografia'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== JUSTIF. FUTUROS INTEGRANTES ============================ */
+		if(isset($detalles['justif_futuros_integrantes']) && $detalles['justif_futuros_integrantes']){
+			$this->imprimir_titulo_cuadro('Justificación de futuros integrantes');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['justif_futuros_integrantes'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== RECURSOS COMPROMETIDOS ============================ */
+		if(isset($detalles['recursos_comprometidos']) && $detalles['recursos_comprometidos']){
+			$this->imprimir_titulo_cuadro('Recursos comprometidos');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['recursos_comprometidos'],0,'J',false);
+			$this->Ln();
+		}
+
+	}
+
+	function integrantes($detalles)
+	{
+		$this->imprimir_titulo_cuadro('Integrantes del Proyecto');
+		$ancho_cols = array(20,51,45,38,18,18);
+		/* ENCABEZADO DE LA TABLA */
+		$this->SetTextColor(255,255,255);
+		$this->Cell($ancho_cols[0],5,"DNI/Pas.",1,0,'C',true);
+		$this->Cell($ancho_cols[1],5,"Integrante",1,0,'C',true);
+		$this->Cell($ancho_cols[2],5,"Función",1,0,'C',true);
+		$this->Cell($ancho_cols[3],5,"Horas dedicación",1,0,'C',true);
+		$this->Cell($ancho_cols[4],5,"Desde",1,0,'C',true);
+		$this->Cell($ancho_cols[5],5,"Hasta",1,1,'C',true);
+
+
+		
+		/* CUERPO DE LA TABLA */
+		$this->SetFont('arial','',8);
+		$this->SetTextColor(0,0,0);
+		foreach ($detalles as $integrante) {
+			$integrante['apellido'] = strtoupper($integrante['apellido']);
+			$integrante['nombres'] = ucwords(strtolower($integrante['nombres']));
+			$ayn = $integrante['apellido'] . ", " . $integrante['nombres'];
+			#/*
+			if (strlen($ayn) > 29){
+				$nom = explode(" ", $integrante['nombres']);
+				$nom[count($nom)-1] = substr(end($nom),0,1).".";
+				$nom_corto = implode(" ", $nom);
+				$ayn = $integrante['apellido'] . ", " . $nom_corto;
+				if (strlen($ayn) > 29) {
+					$ape = explode(" ", $integrante['apellido']);
+					$ape[count($ape)-1] = substr(end($ape),0,1).".";
+					$ape_corto = implode(" ", $ape);
+					$ayn = $ape_corto . ", " . $nom_corto;
+				}
+			} 
+			#*/
+			$this->Cell($ancho_cols[0],5,$integrante['nro_documento'],1,0,'C',false);
+			$this->Cell($ancho_cols[1],5,$ayn,1,0,'L',false);
+			$this->Cell($ancho_cols[2],5,$integrante['funcion'],1,0,'C',false);
+			$this->Cell($ancho_cols[3],5,$integrante['horas_dedicacion_desc'],1,0,'C',false);
+			$this->Cell($ancho_cols[4],5,date('d/m/Y',strtotime($integrante['fecha_desde'])),1,0,'C',false);
+			$this->Cell($ancho_cols[5],5,date('d/m/Y',strtotime($integrante['fecha_hasta'])),1,1,'C',false);
+
+		}
+
+	}
+
+	function detalles_pi($detalles)
+	{
+		/* ====================== EFECTOS EN EL SISTEMA CIENTÍFICO ============================ */
+		if(isset($detalles['efectos_sistema_cient']) && $detalles['efectos_sistema_cient']){
+			$this->imprimir_titulo_cuadro('Efectos en el sistema científico');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['efectos_sistema_cient'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== EFECTOS EN LA ACTIVIDAD UNIVERSITARIA ============================ */
+		if(isset($detalles['efectos_actividad_univ']) && $detalles['efectos_actividad_univ']){
+			$this->imprimir_titulo_cuadro('Efectos en la actividad universitaria');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['efectos_actividad_univ'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== APLICACIÓN DE RESULTADOS ============================ */
+		if(isset($detalles['aplicacion_resultados']) && $detalles['aplicacion_resultados']){
+			$this->imprimir_titulo_cuadro('Aplicación de Resultados');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['aplicacion_resultados'],0,'J',false);
+			$this->Ln();
+		}
+		/* ====================== RESULTADOS ESPERADOS ============================ */
+		if(isset($detalles['resultados_esperados']) && $detalles['resultados_esperados']){
+			$this->imprimir_titulo_cuadro('Resultados esperados');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['resultados_esperados'],0,'J',false);
+			$this->Ln();
+		}
+	}
+
+	function detalles_pdts($detalles)
+	{
+		/* ======================PRODUCTO ============================ */
+		if(isset($detalles['producto']) && $detalles['producto']){
+			$this->imprimir_titulo_cuadro('Producto');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['producto'],0,'J',false);
+			$this->Ln();
+		}
+		/* ======================ORIGINALIDAD ============================ */
+		if(isset($detalles['originalidad']) && $detalles['originalidad']){
+			$this->imprimir_titulo_cuadro('Originalidad');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['originalidad'],0,'J',false);
+			$this->Ln();
+		}
+		/* ======================RELEVANCIA ============================ */
+		if(isset($detalles['relevancia']) && $detalles['relevancia']){
+			$this->imprimir_titulo_cuadro('Relevancia');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['relevancia'],0,'J',false);
+			$this->Ln();
+		}
+		
+		/* ======================PERTINENCIA ============================ */
+		if(isset($detalles['pertinencia']) && $detalles['pertinencia']){
+			$this->imprimir_titulo_cuadro('Pertinencia');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['pertinencia'],0,'J',false);
+			$this->Ln();
+		}
+		/* ======================DEMANDA ============================ */
+		if(isset($detalles['demanda']) && $detalles['demanda']){
+			$this->imprimir_titulo_cuadro('Demanda');
+			$this->SetFont('arial','',10);
+			$this->MultiCell(190,5,$detalles['demanda'],0,'J',false);
+			$this->Ln();
+		}
+	}
+
+	function presupuesto($detalles)
+	{
+		$monto = 0;
+		$this->imprimir_titulo_cuadro('Necesidades Presupuestarias');
+		
+		/* ENCABEZADO DE LA TABLA */
+		$this->SetTextColor(255,255,255);
+		$this->Cell(10,5,"Año",1,0,'C',true);
+		$this->Cell(40,5,"Rubro",1,0,'C',true);
+		$this->Cell(60,5,"Descripcion",1,0,'C',true);
+		$this->Cell(65,5,"Justificación",1,0,'C',true);
+		$this->Cell(15,5,"Monto",1,1,'C',true);
+		
+		/* CUERPO DE LA TABLA */
+		$this->SetFont('arial','',6);
+		$this->SetTextColor(0,0,0);
+		foreach ($detalles as $presupuesto) {
+			$this->Cell(10,5,$presupuesto['anio'],1,0,'C',false);
+			$this->Cell(40,5,$presupuesto['rubro'],1,0,'J',false);
+			$this->Cell(60,5,substr($presupuesto['descripcion'],0,50),1,0,'J',false);
+			$this->Cell(65,5,substr($presupuesto['justificacion'],0,50),1,0,'J',false);
+			$this->Cell(15,5,'$'.number_format($presupuesto['monto'],2),1,1,'C',false);
+			$monto+=$presupuesto['monto'];
+		}
+		$this->Cell(175,5,'TOTAL: ',1,0,'R',false);
+		$this->Cell(15,5,'$'.number_format($monto,2),1,1,'C',false);
+	}
+
+	function objetivos($detalles)
+	{
+		$this->imprimir_titulo_cuadro('Metas y Tareas');
+
+		$this->SetFont('arial','',9);
+		
+		
+		foreach ($detalles as $item) {
+			$this->SetFillColor(85,85,85);
+			$this->SetTextColor(255,255,255);
+			$this->setX(10);
+
+			$this->MultiCell(190,5,$item['obj_especifico'],0,'L',true);
+			$tareas = explode('||',$item['tareas']);
+			foreach($tareas as $tarea){
+				$this->setX(15);
+				$this->SetTextColor(0,0,0);
+				$this->MultiCell(190,5, chr(149).$tarea,0,'L',false);
+			}
+
+		}
+	}
+
+	function cronograma($detalles)
+	{
+		//Numeros ordinales para la generación de cuadro cronograma
+		$ordinal = array('1'=>'Primer','2'=>'Segundo','3'=>'Tercer','4'=>'Cuarto');
+		
+		$ci_proyectos = toba::componente_por_id(4465);
+
+		//Objetivos específicos del proyecto
+		$objetivos = toba::consulta_php('co_proyectos')->get_obj_especificos($detalles['id_proyecto'],FALSE);
+		if(count($objetivos) && isset($detalles['id_proyecto'])){
+			$tiempos = toba::consulta_php('co_proyectos')->get_objetivos_tiempos($detalles['id_proyecto']);
+			
+			$objs_tiempos = array();
+			foreach($tiempos as $tiempo){
+				$objs_tiempos[$tiempo['id_obj_especifico']][] = array('anio'=>$tiempo['anio'], 'semestre' => $tiempo['semestre']);
+			}	 
+
+			$anios_proyecto = $ci_proyectos->get_anios_proyecto($detalles['fecha_desde'],$detalles['duracion']);
+
+			$datos = array(
+				'duracion'	   => $detalles['duracion'],
+				'ordinal'		=> $ordinal,
+				'objetivos'	  => $objetivos,
+				'objs_tiempos'   => $objs_tiempos,
+				'anios_proyecto' => $anios_proyecto
+			);
+			//ei_arbol($datos);
+			/* ============== CABECERA ==================== */
+			$this->SetTextColor(255,255,255);
+			$this->SetFillColor(110,123,188);
+			$this->Cell(110,5,'Meta',1,0,'C',TRUE);
+			for($i=0;$i<$datos['duracion'];$i++){
+				$this->Cell(20,5,$datos['anios_proyecto'][$i]['anio'],1,0,'C',TRUE);
+			}
+			$this->Ln();
+			$this->Cell(110,5,'',1,0,'C',TRUE);
+			/* ============================================= */
+
+			$this->SetTextColor(0,0,0);
+			$this->SetFont('arial','',7);
+			for($i=1;$i<=$datos['duracion'];$i++){
+				$this->Cell(10,5,'1º Sem.',1,0,'C',FALSE);	
+				$this->Cell(10,5,'2º Sem.',1,0,'C',FALSE);
+			}
+			$this->Ln();
+			foreach($datos['objetivos'] as $objetivo){
+				$obj = (strlen($objetivo['obj_especifico']) > 90) ? 
+							substr($objetivo['obj_especifico'],0,90)."..." :
+							$objetivo['obj_especifico'];
+				$this->Cell(110,5,$obj,1,0,'L',FALSE);	
+				
+
+				$pintada = FALSE;
+				$this->SetFillColor(0,0,0);
+
+				foreach($datos['anios_proyecto'] as $anio){
+					for ($semestre=1;$semestre<=2;$semestre++){
+						
+						if(isset($datos['objs_tiempos'][$objetivo['id_obj_especifico']])) {
+							$especificos = $datos['objs_tiempos'][$objetivo['id_obj_especifico']];
+							foreach($especificos as $id => $periodo){
+								if($periodo['anio'] == $anio['anio'] && $periodo['semestre'] == $semestre){
+									$pintada = TRUE;
+								}
+								
+							}
+						}
+						$texto = ($pintada) ? 'X' : '';
+						$this->Cell(10,5,$texto,1,0,'C',FALSE);
+						$pintada = FALSE;
+					}
+
+				}
+				$this->Ln();
+			}
+
+		}
+	}
+
+	function Header()
+	{
+		$path = toba::proyecto()->get_www();
+        $path = $path['path']."img/logo_membrete.png";
+		$this->Image($path,10,13,55,20);
+		$this->SetFont('arial','BU',17);
+
+		$this->setXY(40,26);
+		$this->Cell(130,7,"Proyecto ".$this->datos['general']['codigo'],0,1,'C',false);	
+		$this->Line(10,39,200,39);
+		$this->setXY(10,42);
+
+	}
+
+	function imprimir_titulo_cuadro($texto)
+	{
+		$this->SetFont('arial','B',9);
+		$this->SetFillColor(110,123,188);
+		$this->SetTextColor(255,255,255);
+		$this->Cell(190,7,$texto,1,1,'C',true);	
+		//Vuelvo el color a negro
+		$this->SetTextColor(0,0,0);
+	}	
+
+	function Footer()
+	{
+		$this->SetY(-15);
+		$this->Cell(190,5,'Página '.$this->PageNo(),0,1,'C',false);
+	}
+	function mostrar()
+	{
+		$this->Output('I','Evaluaciones.pdf');
+	}
+		
+}
+?>

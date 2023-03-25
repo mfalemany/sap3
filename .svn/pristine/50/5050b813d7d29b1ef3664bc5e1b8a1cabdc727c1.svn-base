@@ -1,0 +1,241 @@
+<style>
+	.resultado_seccion{
+		font-size: 1.4em; 
+		text-align: center; 
+		text-transform: uppercase; 
+		background-color: #d0fff6; 
+		font-weight: bold; 
+		padding: 10px 0px;
+	}
+	.criterio{
+		padding: 0px;
+		margin: 0px;
+		text-align: center;
+	}
+	.tabla_puntajes{
+		background-color: #FFF;
+border-collapse: collapse;
+
+		margin: 20px auto;
+		width: 95%;
+	}
+	.tabla_puntajes tr td{
+		
+		border: 1px solid #444;
+		padding: 2px 10px;
+
+	}
+	.tabla_puntajes .cabecera{
+		font-weight: bold;
+		text-align: center;
+		background-color: #363f81;
+		color: #FFF;
+	}
+	.tabla_puntajes .detalle_puntajes{
+
+	}
+	.tabla_puntajes .detalle_puntajes .subcriterio{
+		font-size: 1.5rem;
+	    padding: 6px 0px 0px 0px;
+	    font-weight: bold;
+	}
+	.tabla_puntajes .detalle_puntajes .referencia{
+		color: #222;
+		font-size: 1rem;
+		padding: 6px 0px 2px 15px;
+	}
+	.tabla_puntajes .detalle_puntajes:nth-child(odd){
+		background-color: #f6f6ff;
+	}
+	.tabla_puntajes .detalle_puntajes p{
+		line-height: 1rem;
+		margin: 1px;
+		padding: 1px;
+	}
+	.tabla_puntajes .detalle_puntajes .puntaje_asignado{
+		font-size: 1.3em;
+		font-weight: bold;	
+	}
+</style>
+<?php 
+	$ruta_base = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('ruta_base_documentos');
+	$url_base  = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos');
+	$ruta_pdf  = '/becas/doc_por_convocatoria/' . $datos['inscripcion']['id_convocatoria'] . '/' . $datos['inscripcion']['id_tipo_beca'] . '/resolucion_otorgamiento.pdf';
+?>
+<div>
+	<fieldset>
+		<legend>Avales de la Postulación</legend>
+		<div style='font-size: 1.2em;'>
+			<p>Aval de el/la director/a de la beca:	
+				<span class="etiqueta_info"><?php echo $this->get_estado_aval_desc($datos['estado_aval'], 'aval_director'); ?></span>
+			</p>
+			<p>Aval de el/la director/a del proyecto:	
+				<span class="etiqueta_info"><?php echo $this->get_estado_aval_desc($datos['estado_aval'], 'aval_dir_proyecto'); ?></span>
+			</p>
+			<p>Aval de la Secretaría de Investigación:	
+				<span class="etiqueta_info"><?php echo $this->get_estado_aval_desc($datos['estado_aval'], 'aval_secretaria'); ?></span>
+			</p>
+			<p>Aval del Decanato:	
+				<span class="etiqueta_info"><?php echo $this->get_estado_aval_desc($datos['estado_aval'], 'aval_decanato'); ?></span>
+			</p>
+		</div>
+		
+	</fieldset>
+</div>
+<?php if($datos['publicar_adm'] == 'S') : ?>
+<?php setlocale(LC_TIME,'es_AR.UTF-8');?>
+<div style="margin-top: 15px;">
+	<fieldset>
+		<legend>Admisibilidad</legend>
+		<div id="info_admisibilidad">
+			<div class="caja_info_warning">
+				<p><u>ADMISIBILIDAD</u>: La admisibilidad es el proceso donde se verifica que el postulante cumpla con todas las condiciones y requisitos necesarios (establecidos en el <a href="<?php echo toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos'); ?>/becas/estaticos/reglamento.pdf" target="_BLANK">Reglamento</a>).</p>
+				<p>Los postulantes "No Admitidos" que consideren necesario presentar recursos de reconsideración, tendr&aacute;n plazo hasta el <?php echo strftime('%d de %B de %Y',strtotime($datos['fecha_limite_reconsideracion'])); ?> - 13:00hs, mediante una nota dirigida a <?php echo ($datos['genero_secretario'] == 'M') ? 'el' : 'la'; ?> <?php echo ($datos['genero_secretario'] == 'M') ? 'Secretario' : 'Secretaria'; ?> General de Ciencia y Técnica de la UNNE, <?php echo $datos['nombre_secretario']; ?>, adjuntando la documentación que considere necesaria para justificar su pedido.</p>
+				<p>La solicitud debe contar con el aval del director/a del postulante y enviarlo al correo del &Aacute;rea de Recursos Humanos: <a target="_BLANK" href="mailto:<?php echo toba::consulta_php('co_tablas_basicas')->get_parametro_conf('direccion_mail_rrhh'); ?>"><?php echo toba::consulta_php('co_tablas_basicas')->get_parametro_conf('direccion_mail_rrhh'); ?></a> con el asunto, Pedido de reconsideraci&oacute;n - Admisibilidad Becas CyT.</p>
+			</div>
+		</div>
+		<div style='font-size: 1.2em;'>
+		<?php switch ($datos['admisibilidad']['admisible']) {
+				case 'S':
+					$admisible = 'Solicitud admitida';
+					break;
+				case 'N':
+					$admisible = 'Solicitud no admitida';
+					break;
+				case NULL: 
+					$admisible = 'La solicitud todavía no pasó por el proceso de admisibilidad';
+			}
+			?>
+			<p class="resultado_seccion">Estado de la solicitud: <?php echo $admisible; ?></p>
+			<?php if($datos['admisibilidad']['admisible'] == 'N') : ?>
+			<p><b><u>Motivo por el cual no fue admitido:</u></b> 
+				<span style='color:#922323;'><?php echo $datos['admisibilidad']['observaciones']; ?></span>
+			</p> 
+			<?php endif; ?>
+		</div>
+	</fieldset>
+</div>
+<?php endif; ?>
+
+
+<?php if ($datos['admisibilidad']['admisible'] == 'N') return; // SI la solicitud no fue admitida, ya no hay nada que mostrar?>
+
+<?php if($datos['publicar_resultados'] == 'S') : ?>
+	<?php if (!$datos['dictamen']['comision']) : ?>
+		<p class="resultado_seccion">No se encontró un dictamen para esta postulación</p>
+	<?php else : ?>
+		<br><br>
+		<fieldset>
+			<legend>Comisión Asesora</legend>
+			<div style='font-size: 1.5em; padding-left: 20px; color:#39397d;'>
+				<!-- ================================== DETALLES DE PUNTAJES ================================== -->
+				<?php foreach($datos['dictamen']['comision']['desglose_puntajes_con_descripciones'] as $criterio => $detalles_criterio) : ?>
+					<div class="criterio">
+						<h2><?php echo $criterio; ?> (Máximo: <?php echo $detalles_criterio['puntaje_maximo_criterio']; ?>)</h2>
+					</div>
+					<div>
+						<table class="tabla_puntajes">
+							<tr class="cabecera">
+								<td>Criterio</td>
+								<td>Máximo posible</td>
+								<td>Puntaje otorgado</td>
+							</tr>
+							<?php foreach ($detalles_criterio['subcriterios'] as $subcriterio => $detalles): ?>
+								<tr class="detalle_puntajes">
+									<td>
+										<p class="subcriterio"><?php echo $detalles['subcriterio_evaluacion']; ?></p>
+										<p class="referencia"><?php echo nl2br($detalles['referencia']); ?></p>
+									</td>
+									<td class="centrado"><?php echo $detalles['puntaje_maximo_subcriterio']; ?></td>
+									<td class="centrado puntaje_asignado"><?php echo $detalles['puntaje_asignado']; ?></td>
+								</tr>
+							<?php endforeach ?>
+						</table>
+					</div>
+
+
+				<?php endforeach; ?>
+				<!-- ============================== EVALUADORES QUE PARTICIPARON ============================== -->
+				<?php if(count($datos['dictamen']['comision']['evaluadores'])) : ?>
+					<p>
+						<u><b>Participaron de la evaluación:</b></u>
+						<ul>
+							<?php foreach($datos['dictamen']['comision']['evaluadores'] as $evaluador): ?>
+							<li><?php echo $evaluador; ?></li>
+							<?php endforeach; ?>
+						</ul>
+					</p>
+				<?php endif; ?>
+			</div>
+		</fieldset>
+		
+
+		<br><br>
+		<fieldset>
+			<legend>Junta Coordinadora</legend>
+			<div style='font-size: 1.5em; padding-left: 20px; color:#39397d;'>
+				<p>
+					<u><b>Puntaje asignado por Junta Coordinadora:</b></u> 
+					<?php if(count($datos['dictamen']['junta'])) : ?>
+						<ul>
+							<?php $puntaje_junta = 0; ?>
+							<?php foreach($datos['dictamen']['junta']['detalles'] as $detalle): ?>
+							<li><b><?php echo $detalle['criterio_evaluacion']; ?></b>: 
+								<?php echo $detalle['puntaje']; ?> puntos (de un mÃ¡ximo de 
+								<?php echo $detalle['puntaje_maximo']; ?>)
+								<?php $puntaje_junta += $detalle['puntaje']; ?>
+							</li>
+							<?php endforeach; ?>
+						</ul>
+						<p>
+							<u><b>Justificación de los puntajes asignados:</b></u> 
+							<?php echo $datos['dictamen']['junta']['justificacion']; ?>
+						</p>
+					<?php else: ?>
+						<p><b>La Junta Coordinadora ha ratificado los puntajes asignados por la Comisión Asesora</b></p>
+					<?php endif; ?>	
+				</p>
+			</div>
+		</fieldset>
+	
+		
+
+		<?php 
+			if(count($datos['dictamen']['comision'])) :
+				$puntos = (isset($puntaje_junta)) ? ($puntaje_junta+$puntaje_inicial) : ($puntaje_comision+$puntaje_inicial);
+		 ?>
+
+		<?php $color = ($datos['admisibilidad']['beca_otorgada'] == 'S') ? '#17a50e' : '#F11'; ?>
+		<h2 style="text-align: center; color:<?php echo $color; ?>; text-shadow: 0px 0px 2px #848484; background-color:#FFF; font-size: 2.5em;">
+			<?php echo ($datos['admisibilidad']['beca_otorgada'] == 'S') ? 'Beca Otorgada! ' : 'Beca NO otorgada. '; ?>
+			Puntaje Total Alcanzado: <?php echo $puntos; ?> puntos.
+		</h2>
+		<?php endif; ?>
+	<?php endif; // Cierro el if (!$datos['dictamen']['comision']) :?>
+		
+	<br><br>
+	<?php if (($datos['admisibilidad']['beca_otorgada'] == 'S') && (file_exists($ruta_base . $ruta_pdf))): ?>
+		<div style='text-align:center;'>
+			<a target="_blank" href='<?php echo $url_base . $ruta_pdf; ?>' style="font-size: 2rem; text-decoration:none; background-color: #3c6eab; color:#FFF; padding: 5px 30px;">Ver resolución de otorgamiento</a>
+		</div>
+	<?php endif; ?>
+	<br><br>
+	<?php if(count($datos['cumplimientos'])): ?>
+		<fieldset>
+			<legend>Cumplimiento de Obligaciones</legend>
+			<div style='font-size: 1.5em; padding-left: 20px; color:#39397d;'>
+				<p>Las obligaciones de los meses que se detallan a continuación fueron marcados por su director como cumplidas.</p>
+			</div>
+			<ul>
+				<?php foreach($datos['cumplimientos'] as $cumplimiento): ?>
+					<li style="font-size: 1.1em; font-weight: bold; padding: 4px 0px;">
+						<?php echo $this->get_mes_desc($cumplimiento['mes']); ?> de <?php echo $cumplimiento['anio'] ?>
+					</li>
+				<?php endforeach; ?>		
+			</ul>
+			
+		</fieldset>
+	<?php endif; ?>
+
+<?php endif; ?>	
+

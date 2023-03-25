@@ -1,0 +1,50 @@
+<style type="text/css">
+	#denominacion{
+		font-family: verdana tahoma times;
+		font-size: 2.4rem;
+		font-weight: bold;
+		margin: 10px 0px;
+		text-align: center;
+	}
+	#descripcion{
+		font-family: verdana tahoma times;
+		font-size: 1.4rem;
+		letter-spacing: 1px;
+		line-height: 1.8rem;
+		margin: 3px 10px 10px 10px;
+		text-align: justify;
+	}
+	#info_complementaria{
+		align-content: space-between;
+		align-items: center;
+		border-bottom: 1px solid #7e1a1a;
+		border-top: 1px solid #7e1a1a;
+		color: #7e1a1a;
+		display: flex;
+		flex-wrap: nowrap;
+		font-size: 1.4rem;
+		font-weight: bold;
+		justify-content: space-evenly;
+		margin: 15px 0px;
+		padding: 5px 0px;
+	}
+
+</style>
+
+<div id='denominacion'>
+	<?php echo $datos['grupo']['denominacion']; ?>
+</div>
+<?php if(isset($datos['grupo']['descripcion']) && $datos['grupo']['descripcion']): ?>
+	<div id='descripcion'>
+		<?php echo $datos['grupo']['descripcion']; ?>
+	</div>
+<?php endif; ?>
+<div id="info_complementaria">
+	<span><u><b>Facultad</b></u>: <?php echo $datos['grupo']['dependencia']; ?></span>
+	<span><u><b>Área de Conocimiento</b></u>: <?php echo $datos['grupo']['area_conocimiento']; ?></span>
+</div>
+
+
+[dep id=form_eval_grupo]
+[dep id=form_eval_plan_trabajo]
+

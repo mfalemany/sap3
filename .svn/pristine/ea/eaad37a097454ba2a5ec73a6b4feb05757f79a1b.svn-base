@@ -1,0 +1,33 @@
+<?php
+class ci_mis_evaluaciones extends sap_ci
+{
+	protected $s__comunicacion;
+	//-----------------------------------------------------------------------------------
+	//---- cu_comunicaciones ------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_comunicaciones(sap_ei_cuadro $cuadro)
+	{
+		$filtro = ( ! $this->soy_admin()) ? array('usuario_id' => toba::usuario()->get_id()) : array();
+		$cuadro->set_datos(toba::consulta_php('co_comunicaciones')->get_comunicaciones($filtro));
+	}
+
+	function evt__cu_comunicaciones__seleccion($seleccion)
+	{
+		$this->s__comunicacion = $seleccion['id'];
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_evaluaciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_evaluaciones(sap_ei_cuadro $cuadro)
+	{
+		if(isset($this->s__comunicacion)){
+			$cuadro->set_datos(toba::consulta_php('co_comunicaciones')->get_evaluaciones_comunicacion($this->s__comunicacion));
+		}
+	}
+
+}
+
+?>

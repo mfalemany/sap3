@@ -1,0 +1,88 @@
+<br>
+<fieldset>
+	<legend>Información Personal</legend>
+	<table>
+		<tr>
+			<td>[ef id=nro_documento]</td>
+		</tr>
+		<tr>
+			<td>[ef id=cuil]</td>
+		</tr>
+		<tr>
+			<td>[ef id=apellido]</td>
+		</tr>
+		<tr>
+			<td>[ef id=nombres]</td>
+		</tr>
+		<tr>
+			<td>[ef id=fecha_nac]</td>
+		</tr>
+		<tr>
+			<td>[ef id=celular]</td>
+		</tr>
+		<tr>
+			<td>[ef id=sexo]</td>
+		</tr>
+		<tr>
+			<td>[ef id=mail]</td>
+		</tr>
+		<tr>
+			<td>[ef id=id_disciplina]</td>
+		</tr>
+		<tr>
+			<td>[ef id=id_nivel_academico]</td>
+		</tr>
+		<tr>
+			<td>[ef id=id_localidad]</td>
+		</tr>
+	</table>
+</fieldset>
+<br>
+
+<fieldset>
+	<legend>Documentación Personal</legend>
+	<div style="color:red; font-size:1.2rem; text-align:center; padding: 3px;;">Para visualizar los documentos, debe guardarlos previamente (si no guarda los cambios el sistema le mostrará la última versión subida)</div>
+	<table class="tabla_documentacion_personal">
+		<tr>
+			<td>[ef id=archivo_dni]</td>
+			<td class="<?php echo ($datos['existe_dni']) ? 'contenedor_enlace' : '';?> centrado">
+				<?php if ($datos['existe_dni']) : ?>
+				<a target="_BLANK" href="<?php echo $datos['url_base']; ?>/docum_personal/<?php echo $datos['nro_documento'];?>/dni.pdf">Ver DNI</a>
+				<?php else: ?>
+					-- No se ha cargado el DNI --
+				<?php endif; ?>
+			</td>
+		</tr>
+		<tr>
+			<td>[ef id=archivo_cbu]</td>
+			<td class="<?php echo ($datos['existe_cbu']) ? 'contenedor_enlace' : '';?> centrado">
+				<?php if ($datos['existe_cbu']) : ?>
+				<a target="_BLANK" href="<?php echo $datos['url_base']; ?>/docum_personal/<?php echo $datos['nro_documento'];?>/cbu.pdf">Ver CBU</a>
+				<?php else: ?>
+					-- No se ha cargado el CBU --
+				<?php endif; ?>
+			</td>
+		</tr>
+		<tr>
+			<td>[ef id=archivo_cuil]</td>
+			<td class="<?php echo ($datos['existe_cuil']) ? 'contenedor_enlace' : '';?> centrado">
+				<?php if ($datos['existe_cuil']) : ?>
+				<a target="_BLANK" href="<?php echo $datos['url_base']; ?>/docum_personal/<?php echo $datos['nro_documento'];?>/cuil.pdf">Ver CUIL</a>
+				<?php else: ?>
+					-- No se ha cargado el CUIL --
+				<?php endif; ?>
+			</td>
+		</tr>
+		<tr>
+			<td >[ef id=archivo_cvar]</td>
+			<td class="<?php echo ($datos['existe_cvar']) ? 'contenedor_enlace' : '';?> centrado">
+				<?php if ($datos['existe_cvar']) : ?>
+				<a target="_BLANK" href="<?php echo $datos['url_base']; ?>/docum_personal/<?php echo $datos['nro_documento'];?>/cvar.pdf">Ver CVAr</a>
+				<?php else: ?>
+					-- No se ha cargado el CVAR --
+				<?php endif; ?>
+			</td>
+		</tr>
+	</table>
+</fieldset>
+<br>

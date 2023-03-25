@@ -1,0 +1,165 @@
+<style>
+	#form_container{
+		border: 3px solid #3881da;
+		border-radius: 10px;
+		margin: 10px auto;
+		min-width: 530px;
+		padding: 5px 10px;
+		width: 60%;
+	}
+	#form_container p{
+		font-size: 16px;
+		line-height: 20px;
+		text-align: justify;
+	}
+	#requisitos_container{
+	    align-content: flex-end;
+	    align-items: flex-start;
+		display: flex;
+	    flex-direction: row;
+	    flex-wrap: wrap;
+	    justify-content: space-evenly;
+	    margin-top: 20px;
+	    padding: 5px 10px;
+		
+	}
+	.tabla_requisitos{
+		border-collapse: collapse;
+		font-size: 15px;
+		margin-top: 20px;
+		width: 45%;
+	}
+	.tabla_requisitos caption{
+		font-size: 1.5em;
+		font-weight: bold;
+	}
+	.tabla_requisitos tr:nth-child(odd){
+		background-color: #f1f1f1;
+	}
+	.tabla_requisitos tr td, 
+	.tabla_requisitos tr th{
+		border:  1px solid #333;
+		padding: 4px 6px;
+	}
+
+	.tabla_requisitos tr th{
+		text-align: center;
+		background-color: #3a79c7;
+		color: #FFF;
+	}
+	.tabla_requisitos tr td{
+		vertical-align: top;
+	}
+	.tabla_requisitos tr td:first-child{
+		text-align: justify;
+	}
+	#overlay_contenido{
+		font-size: 1.4rem;
+	}
+
+</style>
+<div id="form_container">
+	<p>Los Docentes no categorizados o que consideren desactualizada su categor&iacute;a, podr&aacute;n obtener una <b>calificaci&oacute;n transitoria</b>, solo a los fines de la presente convocatoria de becas, mediante el cumplimiento de todos los requisitos detallados y presentar toda la documentaci&oacute;n correspondiente indicada.</p>
+	<div>
+		[dep id=form_calificacion]
+	</div>
+</div>
+
+<div id="requisitos_container">
+	<table class="tabla_requisitos">
+		<caption>Requisitos para solicitar Categoría I</caption>
+		<thead>
+			<th>Requisito</th>
+			<th>Documental</th>
+		</thead>
+		<tr>
+			<td>Revistar como docente en la UNNE en un cargo regular u ordinario. Si es interino debe acreditar 3 años de antigüedad mínima.</td>
+			<td>Fotocopia/Imagen de la resolución de designación</td>
+		</tr>
+		<tr>
+			<td>Tener Título de posgrado de Doctor</td>
+			<td>Fotocopia/Imagen del título (ambas caras)</td>
+		</tr>
+		<tr>
+			<td>Haber dirigido un mínimo de dos tesis Doctorales y/ó de Maestría terminadas, al menos una en calidad de director, pudiendo haber actuado en otra/s en calidad de codirector</td>
+			<td>Fotocopia/Imagen de las actas de las tesis</td>
+		</tr>
+		<tr>
+			<td>Ser director de al menos un proyecto de investigación vigente, y haber dirigido al menos 2 proyectos anteriores. En todos los casos los PI deben ser acreditados por entidad de CyT competente (SGCyT UNNE, Agencia, etc).</td>
+			<td>Fotocopia/Imagen de Resolución de aprobación de los proyectos</td>
+		</tr>
+		<tr>
+			<td>Ser autor de un mínimo de 3 publicaciones en revistas indexadas de impacto en los últimos 5 años.</td>
+			<td>Fotocopia/Imagen de la primera página del articulo o link del artículo.</td>
+		</tr>
+	</table>
+	<table class="tabla_requisitos">
+		<caption>Requisitos para solicitar Categoría II</caption>
+		<thead>
+			<th>Requisito</th>
+			<th>Documental</th>
+		</thead>
+		<tr>
+			<td>Revistar como docente en la UNNE en un cargo regular u ordinario. Si es interino debe acreditar 3 años de antigüedad mínima.</td>
+			<td>Fotocopia/Imagen de la resolución de designación</td>
+		</tr>
+		<tr>
+			<td>Tener Título de posgrado de Magister o Doctor </td>
+			<td>Fotocopia/Imagen del título (ambas caras)</td>
+		</tr>
+		<tr>
+			<td>Haber dirigido o codirigido una tesis de Maestría o Doctorado terminada y aprobada o en su defecto 8 años de actividad de formación de RRHH</td>
+			<td>Fotocopia/Imagen del acta de la tesis o lista cronológica de publicaciones conjuntas.</td>
+		</tr>
+		<tr>
+			<td>Ser director o codirector de al menos un proyecto de investigación vigente, y haber dirigido al menos 1 proyectos anteriores. En todos los casos los PI deben ser acreditados por entidad de CyT competente (SGCyT UNNE, Agencia, etc).</td>
+			<td>Fotocopia/Imagen de Resolución de aprobación de los proyectos</td>
+		</tr>
+		<tr>
+			<td>Ser autor o coautor de un mínimo de 3 publicaciones en revistas indexadas de impacto en los últimos 5 años</td>
+			<td>Fotocopia/Imagen de la primera página del articulo</td>
+		</tr>
+	</table>
+	<table class="tabla_requisitos">
+		<caption>Requisitos para solicitar Categoría III</caption>
+		<thead>
+			<th>Requisito</th>
+			<th>Documental</th>
+		</thead>
+		<tr>
+			<td>Revistar como docente en la UNNE en un cargo regular u ordinario. Si es interino debe acreditar 3 años de antigüedad mínima.</td>
+			<td>Fotocopia/Imagen de la resolución de designación</td>
+		</tr>
+		<tr>
+			<td>Tener Título de posgrado de Magister o Doctor</td>
+			<td>Fotocopia/Imagen del título (ambas caras)</td>
+		</tr>
+		<tr>
+			<td>Haber dirigido o codirigido una tesis de Maestría o Doctorado terminada y aprobada o en su defecto 5 años de actividad de formación de RRHH</td>
+			<td>Fotocopia/Imagen del acta de la tesis o lista cronológica de publicaciones conjuntas.</td>
+		</tr>
+		<tr>
+			<td>Ser director o codirector de al menos un proyecto de investigación vigente o demostrar actividad continua en investigación en más de 5 años en PI acreditados por entidad de CyT competente (SGCyT UNNE, Agencia, etc).</td>
+			<td>Fotocopia/Imagen de Resolución de aprobación de los proyectos</td>
+		</tr>
+		<tr>
+			<td>Ser autor o coautor de un mínimo de 3 publicaciones en revistas indexadas de impacto en los últimos 5 años</td>
+			<td>Fotocopia/Imagen de la primera página del articulo</td>
+		</tr>
+	</table>
+	<table class="tabla_requisitos">
+		<caption>Requisitos para solicitar Categoría IV</caption>
+		<thead>
+			<th>Requisito</th>
+			<th>Documental</th>
+		</thead>
+		<tr>
+			<td>Revistar como docente en la UNNE en un cargo regular u ordinario. Si es interino debe acreditar 3 años de antigüedad mínima.</td>
+			<td>Fotocopia/Imagen de la resolución de designación</td>
+		</tr>
+		<tr>
+			<td>Demostrar actividad continua en investigación en más de 3 años en PI acreditados por entidad de CyT competente (SGCyT UNNE, Agencia, etc) o tener Título de posgrado de Magister o Doctor</td>
+			<td>Fotocopia/Imagen de Resolución de aprobación de los proyectos o Fotocopia/Imagen del título (ambas caras) según corresponda.</td>
+		</tr>
+	</table>
+</div>

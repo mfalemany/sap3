@@ -1,0 +1,26 @@
+
+<?php
+
+class helper
+{
+	/**
+	 * Ordena los elementos de un array tomando como referencia la columna recibida como argumento
+	 * @param  array  $array              
+	 * @param  string $columna_ordenacion 
+	 * @return mixed                      
+	 */
+	function ordenar_array($array, $columna_ordenacion)
+	{
+		if ( ! is_array($array) ) return false;
+
+		usort($array, function($a, $b) use ($columna_ordenacion){
+			if ($a[$columna_ordenacion] > $b[$columna_ordenacion]) return 1;
+			if ($a[$columna_ordenacion] == $b[$columna_ordenacion]) return 0;
+			if ($a[$columna_ordenacion] < $b[$columna_ordenacion]) return -1;
+		});
+
+		return $array;
+	}
+}
+
+?>

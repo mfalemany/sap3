@@ -1,0 +1,117 @@
+<?php
+class ci_personas extends sap_ci
+{
+	protected $s__filtro;
+	/*function conf(){
+		$entidades = array(
+			array('carpeta' => 'activ_docente', 'tabla' => 'be_antec_activ_docentes'),
+			array('carpeta' => 'conocimiento_idiomas', 'tabla' => 'be_antec_conoc_idiomas'),
+			array('carpeta' => 'cursos_perfec_aprob', 'tabla' => 'be_antec_cursos_perfec_aprob'),
+			array('carpeta' => 'becas_obtenidas', 'tabla' => 'be_antec_becas_obtenidas'),
+			array('carpeta' => 'estudios_afines', 'tabla' => 'be_antec_estudios_afines'),
+			array('carpeta' => 'part_dict_cursos', 'tabla' => 'be_antec_particip_dict_cursos'),
+			array('carpeta' => 'trabajos_publicados', 'tabla' => 'be_antec_trabajos_publicados')
+		);
+		foreach ($entidades as $entidad) {
+			$sql = "SELECT * FROM {$entidad['tabla']}";
+			$registros = toba::db()->consultar($sql);
+			if(count($registros)){
+				foreach ($registros as $registro) {
+					if( ! file_exists("/mnt/datos/cyt/doc_probatoria/{$registro['nro_documento']}/{$entidad['carpeta']}/{$registro['doc_probatoria']}")){
+						$sql = "UPDATE {$entidad['tabla']} SET doc_probatoria = null WHERE nro_documento = '{$registro['nro_documento']}' AND doc_probatoria = '{$registro['doc_probatoria']}'";
+						toba::db()->ejecutar($sql);
+					}
+				}
+			}
+		}
+	}*/
+
+	//-----------------------------------------------------------------------------------
+	//---- filtro_personas --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__filtro_personas(sap_ei_formulario $form)
+	{
+		if(isset($this->s__filtro)){
+			$form->set_datos($this->s__filtro);
+		}
+	}
+
+	function evt__filtro_personas__filtrar($datos)
+	{
+		$this->s__filtro = $datos;
+	}
+
+	function evt__filtro_personas__cancelar()
+	{
+		unset($this->s__filtro);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cuadro_personas --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cuadro_personas(sap_ei_cuadro $cuadro)
+	{
+		if(isset($this->s__filtro)){
+			$cuadro->set_datos(toba::consulta_php('co_personas')->get_personas($this->s__filtro));	
+		}else{
+			$cuadro->set_eof_mensaje('Debe establecer algún criterio de filtro para ver resultados.');
+		}
+		
+	}
+
+	function evt__cuadro_personas__seleccion($seleccion)
+	{
+		$this->dep('personas')->cargar($seleccion);
+		$this->set_pantalla('pant_edicion');
+	}
+
+	
+	
+	//-----------------------------------------------------------------------------------
+	//---- Eventos ----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function evt__guardar()
+	{
+		try{
+			$this->dep('personas')->sincronizar();
+			$this->dep('personas')->resetear();
+			$this->set_pantalla('pant_seleccion');	
+		}catch(toba_error_db $e){
+			switch ($e->get_sqlstate()) {
+				case 'db_23505':
+					toba::notificacion()->agregar('Ocurrió un error al intentar guardar. Posiblemente la persona ingresada ya se encuentra registrada en el sistema');
+					break;
+				case 'db_23503':
+					toba::notificacion()->agregar($e->get_mensaje_motor());
+					break;
+				default:
+					toba::notificacion()->agregar($e->get_sqlstate());
+					break;
+			}
+		}
+	}
+
+	function evt__cancelar()
+	{
+		$this->dep('personas')->resetear();
+		$this->set_pantalla('pant_seleccion');
+	}
+
+	function evt__agregar()
+	{
+		$this->dep('personas')->resetear();
+		$this->set_pantalla('pant_edicion');
+	}
+
+	function evt__eliminar()
+	{
+		$this->dep('personas')->eliminar_todo();
+		$this->dep('personas')->sincronizar();
+		$this->dep('personas')->resetear();
+		$this->set_pantalla('pant_seleccion');
+	}
+}
+?>

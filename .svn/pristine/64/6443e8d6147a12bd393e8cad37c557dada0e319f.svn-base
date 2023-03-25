@@ -1,0 +1,27 @@
+<style>
+	.ei-ml-fila{
+		background-color: #FFF;
+	}
+	.ei-ml-grilla tr{
+		border-bottom: 2px solid black;
+		margin-bottom: 5px;
+	}
+	.ei-ml-grilla tr:nth-child(odd){
+		background-color: #f1f1f1;
+	}
+	.ei-ml-grilla tr td{
+		border-right: 1px solid #222;
+	}
+	.ef-fijo{
+		font-size: 1.4em !important;	
+	}
+	.ei-ml-etiq{
+		font-size: 1.6em !important;		
+	}
+	#overlay_contenido{
+		font-size: 1.4rem;
+	}
+</style>
+<div>
+	[dep id=ml_documentacion]
+</div>

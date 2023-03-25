@@ -1,0 +1,202 @@
+<?php
+class ci_grupos_evaluacion extends sap_ci
+{
+	protected $s__filtro;
+
+	public function conf()
+	{
+		if (!$this->soy_admin()) {
+			$this->eliminar_filtro();
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_grupos --------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_grupos(sap_ei_cuadro $cuadro)
+	{
+		$filtro = ($this->s__filtro) ? $this->s__filtro : array();
+		
+		if (!$this->soy_admin()) {
+			$filtro['evaluador'] = toba::usuario()->get_id();
+		}
+		
+		$grupos = toba::consulta_php('co_grupos')->get_grupos_a_evaluar($filtro);
+		$cuadro->set_datos($grupos);
+
+	}
+
+	function evt__cu_grupos__seleccion($seleccion)
+	{
+		$this->get_datos('grupo')->cargar(array('id_grupo'=>$seleccion['id_grupo']));
+		
+		// Agrego al filtro, el DNI del usuario logueado (cada evaluador hace su propia evaluación)
+		$clave_evaluacion  = array_merge($seleccion, ['nro_documento_evaluador' => toba::usuario()->get_id()]);
+		$this->get_datos('grupo_informe_evaluacion')->cargar($clave_evaluacion);
+		
+		$this->set_pantalla('pant_evaluacion');
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- filtro_grupos ----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__filtro_grupos(sap_ei_formulario $form)
+	{
+		if(isset($this->s__filtro)){
+			$form->set_datos($this->s__filtro);
+		}
+	}
+
+	function evt__filtro_grupos__filtrar($datos)
+	{
+		$this->s__filtro = $datos;
+	}
+
+	function evt__filtro_grupos__cancelar()
+	{
+		unset($this->s__filtro);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Eventos ----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function evt__guardar()
+	{
+		try {
+			$this->get_datos('grupo')->sincronizar();
+			$this->get_datos('grupo_informe_evaluacion')->sincronizar();
+
+			$this->get_datos('grupo')->resetear();
+			$this->get_datos('grupo_informe_evaluacion')->resetear();
+			$this->set_pantalla('pant_seleccion');
+			
+		} catch (toba_error $e) {
+			$this->agregar_notificacion('Ocurrió un error: ' . $e->get_mensaje() . $e->get_mensaje_motor());
+		} catch (Exception $e) {
+			$this->agregar_notificacion('Ocurrió un error: ' . $e->getMessage());
+		}
+
+	}
+
+	public function evt__cerrar_evaluacion()
+	{
+		$evaluacion = $this->get_datos('grupo_informe_evaluacion')->get();
+		if (empty($evaluacion)) {
+			throw new toba_error('Debe cargar un resultado para su evaluación del último plan de trabajo, en la pesataña \'Evaluación\'');
+		}
+		
+
+		$grupo = $this->get_datos('grupo')->get();
+		if (empty($grupo['id_categoria'])) {
+			throw new toba_error('Debe asignar una categoría al grupo (Emergente o Consolidado), en la pesataña \'Evaluación\'');
+		}
+
+
+		$this->determinar_estado_grupo_segun_evaluacion($evaluacion);
+
+		$this->get_datos('grupo_informe_evaluacion')->set(['estado' => 'C', 'last_updated_at' => date('Y-m-d H:i:s')]);
+
+		$this->agregar_notificacion('Se ha cerrado su evaluación con éxito!');
+		$this->evt__guardar();
+
+	}
+
+	private function determinar_estado_grupo_segun_evaluacion()
+	{
+		if ($evaluacion['resultado'] == 'D') {
+			$this->get_datos('grupo')->set(['fecha_inscripcion' => NULL, 'estado' => co_grupos::ESTADO_DESAPROBADO, 'vigente' => 0]);
+		}
+
+		if ($evaluacion['resultado'] == 'P') {
+			$this->get_datos('grupo')->set(['fecha_inscripcion' => NULL, 'estado' => co_grupos::ESTADO_A_CAMBIAR, 'vigente' => 0]);
+		}
+
+		if ($evaluacion['resultado'] == 'A') {
+			$this->get_datos('grupo')->set(['estado' => co_grupos::ESTADO_ACTIVO, 'vigente' => 1]);
+		}
+	}
+
+	function evt__cancelar()
+	{
+		$this->get_datos('grupo')->resetear();
+		$this->get_datos('grupo_informe_evaluacion')->resetear();
+		$this->set_pantalla('pant_seleccion');
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Auxiliares -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function get_datos($tabla = NULL)
+	{
+		return $this->dep($tabla);
+	}
+
+	public function eliminar_filtro()
+	{
+		if ($this->pantalla()->existe_dependencia('filtro_grupos')) {
+			$this->pantalla()->eliminar_dep("filtro_grupos");
+		}
+	}
+
+	public function servicio__ver_cvar($nro_documento)
+	{
+		$params = toba::memoria()->get_parametros();
+		$url = toba::consulta_php('helper_archivos')->get_path_documento_personal($params['nro_documento'], 'cvar');
+		header('Content-type: application/pdf');
+		header('location: ' . $url);
+	}
+
+	public function servicio__ver_proyecto()
+	{
+		//Cargo la clase encargada de generar el reporte
+		$punto  = toba::puntos_montaje()->get('proyecto');
+		toba_cargador::cargar_clase_archivo($punto->get_id(), 'generadores_pdf/proyectos/reporte_proyecto.php' , 'sap' );
+		
+		//Con el ID del proyecto, busco los datos y se los envio al generador de PDF
+		$params   = toba::memoria()->get_parametros();
+		$proyecto = toba::consulta_php('co_proyectos')->get_reporte_proyecto($params['id']);
+		$proyecto['ver_completo'] = FALSE;
+		$reporte  = new Reporte_proyecto($proyecto);
+		$reporte->mostrar();
+	}
+
+	public function servicio__ver_ultimo_informe()
+	{
+		echo 'El informe estará disponible durante el periodo de evaluación';
+	}
+
+	public function servicio__ver_informe_pdf()
+	{
+		$params                          = toba::memoria()->get_parametros();
+		$datos                           = toba::consulta_php('co_grupos')->get_plan_trabajo($params['id_grupo'], $params['id_convocatoria']);
+		$datos['direccion_mail_grupos']  = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('direccion_mail_grupos');
+		
+		$reporte = new Plan_trabajo_grupo($datos);
+		$reporte->mostrar();
+	}
+
+	public function extender_objeto_js()
+	{
+		/*echo "
+			//Esta función (evt__validar_datos es invocada por SIU-Toba antes de hacer el submit)
+			var ci = {$this->objeto_js};
+			ci.evt__guardar = function(){
+				var formulario = ci.dep('ci_evaluacion_grupos_detalle').dep('form_eval_plan_trabajo')
+
+				var resultado_eval = formulario.ef('resultado').get_estado();
+				if (resultado_eval === 'nopar') {
+					notificacion.mostrar_ventana_modal('Evaluación del informe','Debe asignar un resultado a su evaluación del informe (en la pestaña \'Evaluación\')');
+					return false;
+				} else {
+					return true;
+				}
+
+			}
+		";*/
+	}
+}
+?>

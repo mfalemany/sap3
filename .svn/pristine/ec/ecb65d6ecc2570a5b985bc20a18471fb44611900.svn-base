@@ -1,0 +1,1 @@
+<li class='{{clase_css}}'>{{descripcion}} en {{dependencia_desc}} ({{fecha_desde}} hasta {{fecha_hasta}})</li>

@@ -1,0 +1,85 @@
+<?php
+require_once('pdfparser/vendor/autoload.php');
+//Este script utiliza la libreria PdfParser para acceder al texto de los PDF y renombrarlos 
+class ProcesadorRecibos{
+	protected $lector;
+
+	function __construct(){
+		$this->lector = new \Smalot\PdfParser\Parser();
+	}
+
+	function encontrar_dni($texto){
+		$cuil = preg_match_all('/[0-9]{2}-[0-9]{8}-[0-9]{1}/',$texto,$encontrados);	
+		if(isset($encontrados[0])){
+			foreach ($encontrados[0] as $cuil) {
+				if($cuil != '30-99900421-7'){
+					return substr($cuil,3,8);
+				} 
+			}
+		}
+	}
+	function encontrar_fecha($texto){
+		$pos = strpos($texto,'fecha:');
+		return ($pos && $pos >= 0) ? substr($texto,($pos+6),10) : FALSE;
+	}
+
+	/**
+	 * Recibe los archivos subidos desde el cliente y los procesa para renombrarlos.
+	 * @param  array $archivos Array de archivos (generalmente la variable $_FILES)
+	 * @return array           retorna un array con los totales procesados
+	 */
+	function procesar($archivos){
+		$subidos = array();
+		$errores = array();
+
+		for($i = 0; $i < count($archivos['name']); $i++){
+			//Si no es un PDF o tuvo error
+			if(mime_content_type($archivos['tmp_name'][$i]) != 'application/pdf' || $archivos['error'][$i] != 0){
+				$errores[] = array('motivo' => 'No es un PDF o tiene errores', 'archivo' => $archivos['name'][$i]);
+				continue;
+			}
+
+			$subidos[$i] = array(
+				'name'      => $archivos['name'][$i],
+				'type'      => $archivos['type'][$i],
+				'tmp_name'  => $archivos['tmp_name'][$i],
+				'error'     => $archivos['error'][$i],
+				'errorsize' => $archivos['size'][$i]
+			);
+		}
+
+		foreach ($subidos as $archivo) {
+			$texto = $this->lector->parseFile($archivo['tmp_name']);
+			$texto = str_replace(' ','',strtolower($texto->getText()));
+			$dni = $this->encontrar_dni($texto);
+			$fecha = $this->encontrar_fecha($texto);
+			$recibo = $this->encontrar_nro_recibo($texto);
+			if($dni && $fecha && $recibo){
+				$fecha = (preg_match('/[0-9]{2}\/[0-9]{2}\/[0-9]{4}/', $fecha) == 1) ? $fecha : date('d/m/Y');
+				$fecha = str_replace('/','-',$fecha);
+				if( ! move_uploaded_file($archivo['tmp_name'],"/mnt/datos/cyt/recibos_sueldo/{$dni}_{$recibo}_{$fecha}.pdf")){
+					$errores[] = array('motivo' => 'Error al mover el archivo','archivo' => $archivos['name'][$i]);
+				}else{
+					$fecha_ymd = new Datetime($fecha);
+					$fecha_ymd = $fecha_ymd->format('Y-m-d');
+					toba::consulta_php('co_becas')->registrar_recibo(
+						array('nro_documento' => $dni,
+							  'id_recibo'     => $recibo,
+							  'fecha_emision' => $fecha_ymd)
+					);
+				}
+			}else{
+				$errores[] = array('motivo' => 'No se pudieron obtener los parametros del PDF', 'archivo' => $archivos['name'][$i]);
+			}
+		}
+
+		return $errores;
+	}
+
+	function encontrar_nro_recibo($texto){
+		$pos = strpos($texto, 'recibodesueldonúmero:');
+		return ($pos >= 0) ? substr($texto,$pos+22,5) : FALSE;
+	}
+
+}
+?>

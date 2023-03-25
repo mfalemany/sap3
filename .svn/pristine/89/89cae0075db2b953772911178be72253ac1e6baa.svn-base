@@ -1,0 +1,797 @@
+<?php
+class ci_edicion_grupos extends sap_ci
+{
+	protected $s__grupo;
+	protected $s__convocatoria_anio_actual;
+	protected $s__datos_iniciales;
+	protected $hubo_cambios; 
+
+	function conf()
+	{
+		$this->s__grupo = $this->get_datos('grupo')->get();
+		$this->s__convocatoria_anio_actual = toba::consulta_php('co_grupos')->get_convocatoria_anio_vigente();
+		
+		//Si se está editando un grupo (ya guardado) y hay una convocatoria en el año en curso, 
+		//se intenta cargar el informe correspondiente (si existiera)
+		if ($this->s__grupo && $this->s__convocatoria_anio_actual) {
+			$filtro = [
+				'id_grupo'        => $this->s__grupo['id_grupo'],
+				'id_convocatoria' => $this->s__convocatoria_anio_actual['id'] 
+			];
+
+			$estados_no_permiten_edicion = toba::consulta_php('co_grupos')->get_estados_no_permiten_edicion();
+			if (in_array($this->s__grupo['id_estado'], $estados_no_permiten_edicion)) {
+				$this->bloquear_pantalla(['pant_grupo', 'pant_resultados', 'pant_plan_trabajo']);
+				$this->bloquear_eventos();
+			}
+
+			//retorna un array con todas las filas que cumplen la condición.
+			//En este caso, solo un posible resultado (por eso se usa el indice 0)
+			$id_fila_informe = $this->get_datos('grupo_informe')->get_id_fila_condicion($filtro);
+			if ($id_fila_informe) {
+				$this->get_datos('grupo_informe')->set_cursor($id_fila_informe[0]);
+			}
+
+			if (!toba::consulta_php('co_grupos')->existen_planes_presentados($this->s__grupo['id_grupo'], true)) {
+				$this->pantalla()->eliminar_tab('pant_planes_presentados');
+			}
+		}
+
+		if (!$this->puede_presentar_plan_trabajo()) {
+			//$this->pantalla()->eliminar_evento('finalizar_presentacion');
+			$this->pantalla()->eliminar_tab('pant_plan_trabajo');
+			//$this->bloquear_pantalla(array('pant_grupo'));
+			$this->bloquear_eventos(array('guardar'));
+		} else {
+			$this->determinar_etiqueta_boton_finalizar();
+		}
+
+
+		
+		
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Eventos ----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function evt__guardar()
+	{
+		$this->validar_condiciones_grupo(true);
+		if( ! $this->soy_admin()){
+			$this->get_datos('grupo')->set(array('nro_documento_coordinador'=>toba::usuario()->get_id()));	
+		}
+		
+		try {
+			$this->get_datos()->sincronizar();
+			$this->get_datos()->resetear();
+			unset($this->s__grupo);	
+			$this->controlador()->set_pantalla('pant_seleccion');
+
+			/* ========= INICIO CONTROL DE CAMBIOS PARA GRUPOS ACTIVOS =========== */
+			if ($this->hubo_cambios) {
+				//Si se està editando un grupo
+				$grupo = $this->get_datos('grupo')->get();
+				if ($grupo) {
+					// Verifico si el estado es ACTIVO. Si lo es, y no està en etapa de presentar plan de trabajo
+					// no debería poder modificar los datos del grupo. Si lo hace, hay que notificar a CyT y 
+					// al coordinador del grupo que deberá volver a presentar el aval
+					$estado_grupo = toba::consulta_php('co_grupos')->get_estado($grupo['id_grupo']);
+					if (in_array($estado_grupo, [co_grupos::ESTADO_ACTIVO, co_grupos::ESTADO_EN_EVALUACION]) && !$this->puede_presentar_plan_trabajo() /*&& $grupo['aval_fecha'] != null*/) {
+						toba::consulta_php('co_grupos')->retirar_aval($grupo['id_grupo']);
+						$this->notificar_cambios_mail($grupo);
+						toba::notificacion()->info('Se han registrado cambios en la información principal de su grupo. Por ello, deberá presentar nuevamente el aval de su Unidad Ancadémica');
+					}
+				}
+			}
+			/* =========== FIN CONTROL DE CAMBIOS PARA GRUPOS ACTIVOS ============= */
+		
+		} catch (toba_error_db $e) {
+			//toba::notificacion()->agregar($e->get_mensaje_motor(),'warning');
+		} catch(Exception $e){
+			toba::notificacion()->agregar($e);
+		}
+	}
+
+	function evt__volver()
+	{
+		$this->get_datos()->resetear();
+		
+		//Esta línea evita que, al presionar el botón volver 
+		//y luego presionar F5, vuelva a la operacion anterior
+		toba::memoria()->limpiar_memoria();
+		
+		unset($this->s__grupo);
+		$this->controlador()->set_pantalla('pant_seleccion');
+	}
+
+	function evt__finalizar_presentacion()
+	{
+		if (!isset($this->s__convocatoria_anio_actual)) {
+			throw new toba_error('No hay una convocatoria definida para el año en curso');
+		}
+		$this->validar_condiciones_grupo(false);
+
+		if( ! $this->validar_plan_trabajo()){
+			throw new toba_error('Debe cargar al menos uno de los campos con su plan de trabajo','warning');
+		}
+
+		//Cuando se cierra la presentación, se asigna fecha de inscripción (si no tenía). 
+		//Esto sucede solo una vez, cuando el grupo se inscribe por primera vez (presenta su primer plan de trabajo)
+		//o cuando si tiene fecha de inscripción, pero fue desaprobado
+		$grupo = $this->get_datos('grupo')->get();
+		if( ! $grupo['fecha_inscripcion'] || $grupo['id_estado'] == 'DESA'){
+			$datos   = ['fecha_inscripcion' => date('Y-m-d'), 'id_estado' => 'INSC'];
+			$mensaje = 'Su inscripción se ha registrado con éxito!';
+		} else {
+			$datos   = ['id_estado' => 'EVAL'];
+			$mensaje = 'Su informe fue presentado con éxito!';
+		}
+		
+		$this->get_datos('grupo')->set($datos);
+
+		$this->get_datos('grupo_informe')->set([
+			'fecha_presentacion' => date('Y-m-d'),
+			'estado'             => 'C',
+			'id_convocatoria'    => $this->s__convocatoria_anio_actual['id']
+		]);
+		
+		try {
+			$this->get_datos()->sincronizar();
+			toba::notificacion()->agregar($mensaje,'info');
+			//Esta línea evita que, al presionar el botón volver 
+			//y luego presionar F5, vuelva a la operacion anterior
+			toba::memoria()->limpiar_memoria();
+			unset($this->s__grupo);	
+			$this->controlador()->set_pantalla('pant_seleccion');
+		} catch (toba_error $e) {
+			toba::notificacion()->agregar('Ocurrió un error: ' . $e->get_mensaje(),'error');
+		}
+	}
+	//-----------------------------------------------------------------------------------
+	//---- form_grupo -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_grupo(sap_ei_formulario $form)
+	{
+		$datos = $this->get_datos('grupo')->get();
+		
+		if($datos){
+			$form->set_datos($datos);
+			if ( in_array($datos['id_estado'], [co_grupos::ESTADO_ACTIVO, co_grupos::ESTADO_EN_EVALUACION]) && !$this->puede_presentar_plan_trabajo()) {
+				$form->agregar_notificacion('Su grupo se encuentra en estado activo. Si modifica información en este apartado, deberá presentar nuevamente el aval de su Unidad Académica', 'warning');
+			}
+			$this->s__datos_iniciales['form_grupo'] = $datos;
+		}
+		if (!$this->soy_admin()) {
+			$form->desactivar_efs(['nro_resol','aval_fecha']);
+		}
+	}
+
+	function evt__form_grupo__modificacion($datos)
+	{
+		$this->hubo_cambios = $this->hubo_cambios || $this->verificar_si_hubo_cambios($datos, 'form_grupo'); 
+		$this->get_datos('grupo')->set($datos);
+		
+	}
+
+	public function verificar_si_hubo_cambios($datos, $formulario)
+	{
+		if (empty($this->s__datos_iniciales)) return false;
+
+		// Igualo las llaves de ambos array
+		foreach ($this->s__datos_iniciales[$formulario] as $indice => $valor) {
+			if (!array_key_exists($indice, $datos)) {
+				unset($this->s__datos_iniciales[$formulario][$indice]);
+			}
+		}
+		
+		return ! ($this->s__datos_iniciales[$formulario] == $datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- ml_integrantes ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__ml_integrantes(sap_ei_formulario_ml $form_ml)
+	{
+		
+		if (!$this->soy_admin()) {
+			//Obtengo los integrantes del grupo
+			$datos = $this->get_datos('grupo_integrante')->get_filas();
+
+			if( ! $this->incluye_el_director($datos) ){
+				$nuevo = array('nro_documento'=> toba::usuario()->get_id(),
+									'fecha_inicio' => date('Y-m-d'),
+									'fecha_fin'    => NULL,
+									'id_rol'       => NULL
+								);
+				//Si el grupo ya está creado
+				if($this->get_datos('grupo')->esta_cargada()){
+					$this->get_datos('grupo_integrante')->nueva_fila($nuevo);
+				}else{
+					$form_ml->agregar_registro($nuevo);
+				}
+			}
+		}
+
+		
+		$datos = $this->get_datos('grupo_integrante')->get_filas();
+		if($datos){
+			$form_ml->set_datos($datos);
+			
+			// Esto es una "serializacion" del array para saber si hubo cambios luego del guardado
+			$estado_inicial = [];
+			foreach ($datos as $integrante) {
+				$estado_inicial[] = [$integrante['nro_documento'], $integrante['id_rol'], $integrante['fecha_inicio'], $integrante['fecha_fin']];
+			}
+			$this->s__datos_iniciales['ml_integrantes'] = $estado_inicial;
+		}
+	}
+
+	function evt__ml_integrantes__modificacion($datos)
+	{
+		$this->get_datos('grupo_integrante')->procesar_filas($datos);
+
+		$estado_final = [];
+		foreach ($datos as $integrante) {
+			$estado_final[] = [$integrante['nro_documento'], $integrante['id_rol'], $integrante['fecha_inicio'], $integrante['fecha_fin']];
+		}
+
+		$this->hubo_cambios = $this->hubo_cambios || $this->verificar_si_hubo_cambios($estado_final, 'ml_integrantes'); 
+	}
+
+	private function incluye_el_director($integrantes)
+	{	
+		foreach($integrantes as $integrante){
+			if(trim($integrante['nro_documento']) == toba::usuario()->get_id()){
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- ml_proyectos -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__ml_proyectos(sap_ei_formulario_ml $form_ml)
+	{
+		$form_ml->set_titulo('Proyectos de Investigación financiados y gestionados por la SGCyT');
+		$datos = $this->get_datos('grupo_proyecto')->get_filas();
+		if($datos){
+			$form_ml->set_datos($datos);
+		}
+	}
+
+	function evt__ml_proyectos__modificacion($datos)
+	{
+		$this->get_datos('grupo_proyecto')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- ml_proyectos_externos --------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__ml_proyectos_externos(sap_ei_formulario_ml $form_ml)
+	{
+		$datos = $this->get_datos('grupo_proyecto_externo')->get_filas();
+		if($datos){
+			$form_ml->set_datos($datos);
+		}
+	}
+
+	function evt__ml_proyectos_externos__modificacion($datos)
+	{
+		$this->get_datos('grupo_proyecto_externo')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- ml_lineas_investigacion ------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__ml_lineas_investigacion(sap_ei_formulario_ml $form_ml)
+	{
+
+		$datos = $this->get_datos('grupo_linea_investigacion')->get_filas();
+		if($datos){
+			$form_ml->set_datos($datos);
+			
+			// Esto es una "serializacion" del array para saber si hubo cambios luego del guardado
+			$estado_inicial = [];
+			foreach ($datos as $linea) {
+				$estado_inicial[] = $linea['linea_investigacion'];
+			}
+			$this->s__datos_iniciales['ml_lineas_investigacion'] = $estado_inicial;
+		}
+
+	}
+
+	function evt__ml_lineas_investigacion__modificacion($datos)
+	{
+		$this->get_datos('grupo_linea_investigacion')->procesar_filas($datos);
+		
+		$estado_final = [];
+		foreach ($datos as $linea) {
+			$estado_final[] = $linea['id_linea_investigacion'].$linea['linea_investigacion'];
+		}
+
+		$this->hubo_cambios = $this->hubo_cambios || $this->verificar_si_hubo_cambios($estado_final, 'ml_lineas_investigacion'); 
+	}	
+
+
+	//-----------------------------------------------------------------------------------
+	//---- form_evento ------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_evento(sap_ei_formulario_ml $form_ml)
+	{
+		$filas = $this->get_datos('grupo_evento')->get_filas();
+		if($filas){
+			$form_ml->set_datos($filas);
+		}
+	}
+
+	function evt__form_evento__modificacion($datos)
+	{
+		$this->get_datos('grupo_evento')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_extension ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_extension(sap_ei_formulario_ml $form_ml)
+	{
+		$filas = $this->get_datos('grupo_extension')->get_filas();
+		if($filas){
+			$form_ml->set_datos($filas);
+		}
+	}
+
+	function evt__form_extension__modificacion($datos)
+	{
+		$this->get_datos('grupo_extension')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_publicacion -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_publicacion(sap_ei_formulario_ml $form_ml)
+	{
+		$filas = $this->get_datos('grupo_publicacion')->get_filas();
+		if($filas){
+			$form_ml->set_datos($filas);
+		}
+	}
+
+	function evt__form_publicacion__modificacion($datos)
+	{
+		$this->get_datos('grupo_publicacion')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_rrhh --------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_rrhh(sap_ei_formulario_ml $form_ml)
+	{
+		$filas = $this->get_datos('grupo_form_rrhh')->get_filas();
+		if($filas){
+			$form_ml->set_datos($filas);
+		}
+	}
+
+	function evt__form_rrhh__modificacion($datos)
+	{
+		$this->get_datos('grupo_form_rrhh')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_transferencia -----------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_transferencia(sap_ei_formulario_ml $form_ml)
+	{
+		$filas = $this->get_datos('grupo_transferencia')->get_filas();
+		if($filas){
+			$form_ml->set_datos($filas);
+		}
+	}
+
+	function evt__form_transferencia__modificacion($datos)
+	{
+		$this->get_datos('grupo_transferencia')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_plan_trabajo ------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_plan_trabajo(sap_ei_formulario $form)
+	{
+		if ($this->get_datos('grupo_informe')->hay_cursor()) {
+			$form->set_datos($this->get_datos('grupo_informe')->get());
+		}
+
+	}
+
+	function evt__form_plan_trabajo__modificacion($datos)
+	{
+		if ($this->get_datos('grupo_informe')->hay_cursor()) {
+			$this->get_datos('grupo_informe')->set($datos);
+		} else {
+			$datos['id_convocatoria'] = $this->s__convocatoria_anio_actual['id'];
+			$this->get_datos('grupo_informe')->resetear();
+			$this->get_datos('grupo_informe')->nueva_fila($datos);
+			$this->get_datos('grupo_informe')->set_cursor(0);
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_planes_presentados --------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function conf__cu_planes_presentados(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$datos = toba::consulta_php('co_grupos')->get_planes_trabajo($this->s__grupo['id_grupo']);
+		if ($datos) {
+			$cuadro->set_datos($datos);
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Funciones auxiliares ---------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function get_ayn($nro_documento)
+	{
+		return toba::consulta_php('co_personas')->get_ayn($nro_documento);
+	}
+
+	/**
+	 * Devuelve la descripcion de un proyecto, determinado por su ID (Carga de descripción del ef_popup)
+	 * @param  integer $id_proyecto ID del proyecto a buscar
+	 * @return string              Descripcion del proyecto buscado
+	 */
+	function get_descripcion_proyecto($id_proyecto)
+	{
+		return toba::consulta_php('co_proyectos')->get_descripcion($id_proyecto);
+	}
+
+	function get_datos($tabla = NULL)
+	{
+		return $this->controlador()->get_datos($tabla);
+	}
+
+	function validar_condiciones_grupo($permite_continuar = false)
+	{
+		$grupo = $this->get_datos('grupo')->get();
+		$lineas_investigacion = count($this->get_datos('grupo_linea_investigacion')->get_filas());
+
+		if ($lineas_investigacion == 0) {
+			$validaciones[] = [
+				'status'  => false,
+				'mensaje' => 'No se declararon líneas de investigación en la pestaña \'Informaciòn del grupo\'. Debe declarar al menos una.'
+			];
+		}
+
+		//Solo a los grupos que se estàn inscribiendo por primera vez se les exige que tengan un proyecto de investigacion vigente
+		$estados_debe_exigirse_proyecto_vigente = toba::consulta_php('co_grupos')->get_estados_permiten_inscripcion();
+		if (isset($grupo['id_estado']) && in_array($grupo['id_estado'], $estados_debe_exigirse_proyecto_vigente)) {
+			$validaciones[] = $this->validar_proyectos();
+		}
+		
+		$validaciones[] = $this->validar_integrantes();
+		
+		$errores = [];
+		foreach ($validaciones as $validacion) {
+			if ($validacion['status'] == false) {
+				$errores[] = $validacion['mensaje'];
+			}
+		}
+
+		if (count($errores) == 0) {
+			return true;
+		}
+
+		$mensaje      = "La validación de las condiciones del grupo arrojó las siguientes alertas: \n";
+		$lista_errores = array_reduce($errores, function($acum, $mensaje){
+			return $this->concatenar($acum, $mensaje);
+		}, '');
+
+		$mensaje .= "<ul>" . $lista_errores . "</ul>";
+
+		//Si hubieron errores, veo si lanzo una alerta o una excepcion
+		if ($permite_continuar) {
+			toba::notificacion()->agregar($mensaje, 'warning');
+		} else {
+			throw new toba_error($mensaje,'','Validación de condiciones del grupo');
+		}
+		
+	}
+
+	/**
+	 * Considera válido a un formulario que tiene al menos uno de sus efs con datos
+	 * @return boolean
+	 */
+	function validar_plan_trabajo()
+	{
+		$datos = $this->get_datos('grupo_informe')->get();
+		foreach ($this->dep('form_plan_trabajo')->get_nombres_ef() as $campo) {
+			if(isset($datos[$campo]) && $datos[$campo]){
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
+
+	/**
+	 * Determina si el grupo que se intenta guardar cumple con la condici? de cantidad de integrantes
+	 * @return boolean
+	 */
+	private function validar_integrantes()
+	{
+		$integrantes = $this->get_datos('grupo_integrante')->get_filas();
+
+		//El grupo debe estar compuesto por al menos tres integrantes
+		if(count($integrantes) < 3){
+			return [
+				'status'  => false, 
+				'mensaje' => 'El grupo debe estar conformado por al menos tres integrantes'
+			];
+		}
+		
+		$nros_documento = array();
+		$incentivados = 0;
+		$docentes = 0;
+		foreach($integrantes as $fila => $integrante){
+			//Valido si hay repetidos
+			if(in_array($integrante['nro_documento'],$nros_documento)){
+				return [
+					'status'  => false, 
+					'mensaje' => 'Existen personas repetidas en la lista de integrantes del grupo (fila '.($fila+1).')'
+				];
+			}else{
+				$nros_documento[] = $integrante['nro_documento'];
+			}
+
+			if(toba::consulta_php('co_personas')->es_docente($integrante['nro_documento'])) {
+				$docentes++;
+			}
+			
+			/*
+			//Cuento la cantidad de docentes incentivados que forman parte del grupo
+			if(toba::consulta_php('co_personas')->es_incentivado($integrante['nro_documento'])) {
+				$incentivados++;
+			}
+
+			*/
+			// =================================================================================
+			//ESTA LINEA HAY QUE ELIMINAR. TEMPORAL PARA QUE NO CONTROLE DOCENTES INCENTIVADOS
+			$incentivados = 3;
+			// =================================================================================
+			
+			//verifico si el integrante ya no forme parte de dos grupos YA INSCRIPTOS (sin inclu? el actual). Los grupos registrados que no se hayan inscripto, no cuentan.
+			$id_actual = $this->get_datos('grupo')->get();
+			$omitir = (isset($id_actual['id_grupo'])) ? array($id_actual['id_grupo']) : array();
+			
+			$grupos = toba::consulta_php('co_grupos')->grupos_es_integrante($integrante['nro_documento'],false,$omitir);
+			if(count($grupos) > 1 ){
+				//obtengo un detalle de los grupos en los cuales est?incluida la persona (para mostrar)
+				$det_grupos = array_reduce($grupos,'self::concatenar');
+				$ayn        = toba::consulta_php('co_personas')->get_ayn($integrante['nro_documento']);
+				return [
+					'status'  => false, 
+					'mensaje' => "El integrante $ayn ya forma parte de dos grupos. Una persona puede formar parte de, como máximo, dos grupos. Grupos de los cuales forma parte: \n <ul>".$det_grupos."</ul>"
+				];
+			}
+			
+		}
+		//El grupo debe tener al menos tres docentes con categor? de incentivos (cualquiera)
+		if($incentivados < 3){
+			return [
+				'status'  => false, 
+				'mensaje' => "El grupo debe estar conformado por al menos tres integrantes con Categoría de Incentivos"
+			];
+		}
+		//El grupo debe tener al menos tres docentes con categor? de incentivos (cualquiera)
+		if($docentes < 3){
+			return [
+				'status'  => false, 
+				'mensaje' => "El grupo debe estar conformado por al menos tres integrantes con cargo docente"
+			];
+		}
+
+		return ['status' => true];
+		
+	}
+
+	//Se utiliza para armar una lista de grupos que se muestra al usuario
+	static function concatenar($acum,$item){
+		$acum .= "<li>".$item."</li>";
+		return $acum; 
+	}
+
+	/**
+	 * Valida que el grupo haya declarado al menos un proyecto vigente
+	 * @return boolean Indica si existen proyectos vigentes
+	 */
+	private function validar_proyectos()
+	{
+		$proyectos = $this->get_datos('grupo_proyecto')->get_filas();
+		
+		if (!count($proyectos)) {
+			return [
+				'status'  => false,
+				'mensaje' => "El grupo debe declarar al menos un proyecto vigente, en la pestaña 'Actividades'"
+			];
+		}
+
+		foreach ($proyectos as $proyecto) {
+			if(toba::consulta_php('co_proyectos')->es_vigente($proyecto['id_proyecto'])){
+				return ['status' => true];
+			}
+		}
+		return [
+			'status'  => false,
+			'mensaje' => "El grupo debe declarar al menos un proyecto vigente (en la pestaña 'Actividades'). Todos los proyectos declarados están finalizados."
+		];
+	}
+
+	/**
+	 * Determina si el grupo está en una instancia en la que puede inscribirse (presentar plan de trabajo inicial)
+	 * o debe presentar un informe bienal  
+	 * Sirve como lugar para reunir todas las validaciones en un solo lugar
+	 * @return boolean
+	 */
+	private function puede_presentar_plan_trabajo()
+	{
+		//Validacion: El grupo se guardó inicialmente (ya tiene un ID de grupo)
+		if (!isset($this->s__grupo['id_grupo'])) {
+			return false;
+		}
+
+		//Validacion: El grupo puede inscribirse y hay una convocatoria abierta
+		$puede_inscribirse = toba::consulta_php('co_grupos')->grupo_puede_inscribirse($this->s__grupo['id_grupo']);
+		if (!($puede_inscribirse && isset($this->s__convocatoria_anio_actual) && $this->s__convocatoria_anio_actual['esta_vigente'])) {
+			$puede_inscribirse = false;
+		} else {
+			$puede_inscribirse = true;
+		}
+
+		//Validacion: el grupo debe presentar informe, y la convocatoria del año en curso lo permite
+		$debe_presentar_informe = toba::consulta_php('co_grupos')->grupo_debe_presentar_informe($this->s__grupo['id_grupo']); 
+		if ($debe_presentar_informe && isset($this->s__convocatoria_anio_actual)) {
+			$custom_params = $this->get_custom_params($this->s__convocatoria_anio_actual);
+			if (!(isset($custom_params['presentacion_informes_abierta']) && $custom_params['presentacion_informes_abierta'] == 'S')) {
+				$debe_presentar_informe = false;
+			} else {
+				$debe_presentar_informe = true;
+			}
+		} else {
+			$debe_presentar_informe = false;
+		}
+
+		//Si alguna de las dos es verdadera...
+		return ($puede_inscribirse || $debe_presentar_informe);
+	}
+
+	protected function bloquear_pantalla($lista_pantallas = array(),$formularios_exceptuados=array())
+	{
+		//SI es administrador, no se bloquea nada
+		if($this->soy_admin()){
+			return;
+		}
+
+		//dependencias que hay que bloquear (SOLO FORMULARIOS)
+		$deps = $this->get_dependencias_clase('form');
+
+		foreach($lista_pantallas as $pantalla){
+
+
+			$deps_pantalla = $this->get_info_objetos_asoc_pantalla($pantalla);
+			$deps_pantalla = array_column($deps_pantalla, 'identificador_dep');
+			
+			//Se recorren las dependencias de la pantalla, y para las que corresponda, se bloquean
+			foreach($deps as $dep){
+				if( in_array($dep,$deps_pantalla)){
+					if(in_array($dep, $formularios_exceptuados)){
+						continue;
+					}
+					$objeto = $this->dep($dep);
+					//Se pone en modo solo lectura
+					if(method_exists($objeto, 'set_solo_lectura')){
+						$objeto->set_solo_lectura();
+						//y si es un formulario multilinea, se desactiva el agregado de filas
+						if(get_class($objeto) == 'sap_ei_formulario_ml'){
+							$objeto->desactivar_agregado_filas();
+						} 
+					}
+				}
+			}
+		}
+		
+	}
+
+	protected function bloquear_eventos($eventos_exceptuados = array())
+	{
+		//Elimino todos los eventos (excepto los volver/cancelar)
+		$eventos_activos = array_keys($this->get_lista_eventos_usuario());
+		$eventos_validos = ['volver', 'cancelar'];
+		$eventos_validos = array_merge($eventos_exceptuados, $eventos_validos);
+
+		foreach ($eventos_activos as $evento) {
+			if (!in_array($evento, $eventos_validos)) {
+				if ($this->pantalla()->existe_evento($evento)) {
+					$this->pantalla()->eliminar_evento($evento);
+				}
+			}
+		}
+	}
+
+	protected function determinar_etiqueta_boton_finalizar()
+	{
+		if (in_array($this->s__grupo['id_estado'],toba::consulta_php('co_grupos')->get_estados_permiten_inscripcion())) {
+			$this->evento('finalizar_presentacion')->set_etiqueta('Inscribir grupo');
+		}
+	}
+
+	public function ajax__estoy($datos, toba_ajax_respuesta $respuesta)
+	{
+		$respuesta->set(['user'=>toba::usuario()->get_id(),'time'=>time()]);
+	}
+
+	protected function notificar_cambios_mail($datos)
+	{
+		$info_usuario = toba::consulta_php('co_personas')->get_persona($datos['nro_documento_coordinador']);
+		
+		if (empty($info_usuario['mail'])) return;
+
+		$cuerpo = $this->armar_template(__DIR__ . '/template_mail_necesidad_aval.php', $datos);
+
+		// Obtengo la dirección de CyT destinada a Grupos
+		$desde = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('direccion_mail_grupos');
+		
+		try {
+			// Constuyo el mail
+			$mail = new toba_mail($info_usuario['mail'], 'Grupos de Inv. SGCyT - UNNE', $cuerpo, $desde);
+			
+			// Envía con copia a CyT
+			$mail->set_bcc([$desde]);
+
+			// Setea hacia donde irán las respuestas
+			$mail->set_reply($desde);
+
+			// Indica que el cuerpo del mail contiene código HTML
+			$mail->set_html(TRUE);
+
+			// Ejecuta el envío
+			$mail->enviar();
+		} catch (Exception $e) {
+			$this->log('Grupos: ocurrió un error al intentar enviar un mail a $info_usuario[\'mail\']: ' . $e->getMessage(), 'grupos');			
+		}
+
+	}
+
+
+	function extender_objeto_js()
+	{
+		echo "
+		//Cada 3 minutos: 3 minutos por 60 segundos por 1000 (porque es en milesimas de segundo)
+		setInterval(function(){
+			{$this->objeto_js}.ajax('estoy',null,this,respuesta_estoy);
+		}, (5*60*1000));
+
+		function respuesta_estoy(response)
+		{
+			console.log(response);
+		}";
+	}
+
+	
+
+	
+
+}
+?>

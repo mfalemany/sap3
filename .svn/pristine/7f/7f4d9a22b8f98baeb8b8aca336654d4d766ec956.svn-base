@@ -1,0 +1,789 @@
+<?php 
+class CVFromCvar extends FPDF
+{
+	protected $nombre_archivo;
+	protected $alto_linea;
+	protected $ancho_etiqueta;
+	protected $ancho_hoja;
+	protected $fuente_familia;
+	protected $fuente_tamanio;
+	protected $borde;
+	protected $datos_personales;
+	protected $datos_experticia;
+	protected $formacion;
+	protected $cargos;
+	protected $antecedentes;
+	protected $produccion;
+	protected $sangria;
+
+	function __construct($datos)
+	{
+		$datos = toba::consulta_php('helper')->utf8_decode_recursive_array($datos);
+		//ei_arbol($datos);
+		$this->alto_linea       = 5;
+		$this->ancho_etiqueta   = 50;
+		$this->ancho_hoja       = 190;
+		$this->fuente_familia   = 'Times';
+		$this->fuente_tamanio   = 11;
+		$this->borde            = false;
+		$this->datos_personales = $datos['datosPersonales'];
+		$this->datos_experticia = $datos['datosExperticia'];
+		$this->formacion        = $datos['formacion'];
+		$this->cargos           = $datos['cargos'];
+		$this->antecedentes     = $datos['antecedentes'];
+		$this->produccion       = $datos['produccion'];
+		$this->sangria          = 0; 
+
+		//var_dump($this->datos_personales);die;
+		parent::__construct();
+		
+		//Formato A4 y Apaisado
+		$this->AddPage('Portrait','A4');
+
+		$this->setFont('Times', 'BU', 14);
+		$this->setXY(10,10); 
+		$ayn = sprintf('%s, %s', $this->datos_personales['identificacion']['apellido'], $this->datos_personales['identificacion']['nombre']);  
+		$this->Cell($this->ancho_hoja,$this->alto_linea*2, $ayn, 1, 1, 'C', false);
+
+
+		$this->datos_personales();
+		$this->datos_domicilio();
+		$this->datos_experticia();
+		$this->datos_formacion();
+		$this->datos_cargos();
+	}
+
+	protected function datos_personales()
+	{
+		$this->titulo_seccion('Datos personales');
+		//Apellido y Nombres
+		$ayn = sprintf('%s, %s', $this->datos_personales['identificacion']['apellido'], $this->datos_personales['identificacion']['nombre']);  
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Apellido y nombre:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(),$this->alto_linea, $ayn, $this->borde, 1, 'L', false);
+		
+		//Número de Documento
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Nro. Documento:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['tipoDocumento'] . ' ' . $this->datos_personales['identificacion']['numeroDocumento'], $this->borde, 1, 'L', false);
+
+		//CUIL
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'CUIL:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['cuil'], $this->borde, 1, 'L', false);
+
+		//Fecha de Nacimiento
+		$fec_nac = $this->getFecha($this->datos_personales['identificacion']['fechaNacimiento'], 'd/m/y');
+
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Nacimiento:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $fec_nac, $this->borde, 1, 'L', false);
+
+		//Estado Civil
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Estado Civil:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['estadoCivil'], $this->borde, 1, 'L', false);
+
+		//Nacionalidad
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Nacionalidad:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['identificacion']['provinciaNacimiento']['provincia'] . ' - ' .$this->datos_personales['identificacion']['paisNacionalidad']['pais'], $this->borde, 1, 'L', false);
+
+		//Sexo
+		$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Sexo:', $this->borde, 0, 'L', false);
+		$this->Cell($this->getAnchoData(), $this->alto_linea, ucwords(strtolower($this->datos_personales['identificacion']['sexo'])), $this->borde, 1, 'L', false);
+	}
+
+	protected function datos_domicilio()
+	{
+		if (isset($this->datos_personales['direccionResidencial'])) {
+			//DirecciÃ³n
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Domicilio residencial:', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionResidencial']['calle'] . ' ' . $this->datos_personales['direccionResidencial']['numero'] . ' - (' . $this->datos_personales['direccionResidencial']['codigoPostal'] . ') ' . $this->datos_personales['direccionResidencial']['localidad']['localidad'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionResidencial']['celular'])) {
+			//Celular
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Celular (personal):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionResidencial']['celular'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionResidencial']['email'])) {
+			//Email
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'E-Mail (personal):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionResidencial']['email'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionLaboral'])) {
+			//DirecciÃ³n
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Domicilio laboral:', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionLaboral']['calle'] . ' ' . $this->datos_personales['direccionLaboral']['numero'] . ' - (' . $this->datos_personales['direccionLaboral']['codigoPostal'] . ') ' . $this->datos_personales['direccionLaboral']['localidad']['localidad'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionLaboral']['celular'])) {
+			//Celular
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Celular (laboral):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionLaboral']['celular'], $this->borde, 1, 'L', false);
+		}
+		if (isset($this->datos_personales['direccionLaboral']['email'])) {
+			//Email
+			$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'E-Mail (laboral):', $this->borde, 0, 'L', false);
+			$this->Cell($this->getAnchoData(), $this->alto_linea, $this->datos_personales['direccionLaboral']['email'], $this->borde, 1, 'L', false);
+		}
+	}
+
+	protected function datos_experticia()
+	{
+		$this->titulo_seccion('Experticia');
+		
+		//Resumen
+		$this->subtitulo_seccion('Resumen:');
+		$this->MultiCell($this->ancho_hoja, $this->alto_linea, $this->datos_experticia['resumen'], $this->borde, 'J', false);
+		
+		//Si no hay áreas de actuación, se finaliza
+		if(!isset($this->datos_experticia['areasDeActuacion']['areaDeActuacion']) || !is_array($this->datos_experticia['areasDeActuacion']['areaDeActuacion'])) {
+			return;
+		}
+
+		$this->Ln();
+
+		//Áreas de Actuación
+		$this->subtitulo_seccion('Áreas de Actuación:');
+
+		$ancho_etiqueta_anterior = $this->ancho_etiqueta;
+		$this->ancho_etiqueta    = 35;
+		
+		$this->setFont($this->fuente_familia, '', ($this->fuente_tamanio-2));
+		// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+		// Si existe una sola area de experticia, la devuelve directamente (como unico elemento), pero
+		// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+		$indices = array_keys($this->datos_experticia['areasDeActuacion']['areaDeActuacion']);
+		if (is_numeric($indices[0])) {
+			$areasDeActuacion = $this->datos_experticia['areasDeActuacion']['areaDeActuacion'];
+		} else {
+			$areasDeActuacion = [$this->datos_experticia['areasDeActuacion']['areaDeActuacion']];
+		}
+		
+		foreach ($areasDeActuacion as $area) {
+			//Área y Línea de Investigación
+			$this->setX($this->getX() + 4);
+			$this->MultiCell($this->ancho_hoja-4, $this->alto_linea, '- '.$area['area'] . ': ' . $area['lineaInvestigacion'], $this->borde, 'J', false);
+		}
+
+		//Vuelvo al estado anterior
+		$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+		$this->ancho_etiqueta = $ancho_etiqueta_anterior;
+	}
+
+	protected function datos_formacion()
+	{
+		$this->titulo_seccion('Formación');
+		$formacion = $this->formacion['formacionAcademica'];
+		
+		$ancho_etiqueta_anterior = $this->ancho_etiqueta;
+		$this->ancho_etiqueta    = 35;
+
+		//Terciaria
+		if (isset($formacion['terciariaNoUniversitaria']) && $formacion['terciariaNoUniversitaria']) {
+			$this->Cell($this->ancho_etiqueta,  $this->alto_linea, 'Terciaria:', $this->borde, 1, 'L', false);
+			$this->Cell($this->getAnchoData(),  $this->alto_linea, $formacion['terciariaNoUniversitaria'], $this->borde, 1, 'L', false);	
+		}
+
+		//Grado
+		
+		if (isset($formacion['universitariaGrado']) && $formacion['universitariaGrado']) {
+			// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+			// Si existe una sola carrera universitaria, la devuelve directamente (como unico elemento), pero
+			// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+			$indices = array_keys($formacion['universitariaGrado']['universitariaGrado']);
+			if (is_numeric($indices[0])) {
+				$universitariaGrado = $formacion['universitariaGrado']['universitariaGrado'];
+			} else {
+				$universitariaGrado = [$formacion['universitariaGrado']['universitariaGrado']];
+			}
+
+			foreach ($universitariaGrado as $grado) {
+				//Título
+				$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Título:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $grado['titulo'] . ' (' . $grado['situacionDeNivel'] . ')', $this->borde, 'L', false);
+				$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+				//Fecha de Egreso
+				if (isset($grado['fechaEgreso']) && $grado['fechaEgreso']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha egreso:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($grado['fechaEgreso'],'d/m/Y'), $this->borde, 1, 'L', false);
+				}
+
+				//Institución otorgante
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Inst. Otorgante:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-$this->ancho_etiqueta-4,  $this->alto_linea, end(explode(';',$grado['institucionesOtorgantes']['institucion']['rutaCompleta'])), $this->borde, 'L', false);
+
+				//Área
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Área:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$grado['areaDelConocimiento']['area'])), $this->borde, 'L', false);
+
+				//Especialidad
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Especialidad:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$grado['especialidad'])), $this->borde, 1, 'L', false);
+
+				//Tesina
+				if (isset($grado['tesina']['titulo']) && $grado['tesina']['titulo']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Tesina:', $this->borde, 0, 'L', false);
+					$this->MultiCell($this->ancho_hoja-4,  $this->alto_linea, $grado['tesina']['titulo'], $this->borde, 'L', false);
+				}
+				$this->Ln();
+			}
+			
+		}
+
+		if (isset($formacion['posgradoEspecializacion']) && $formacion['posgradoEspecializacion']) {
+			// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+			// Si existe una sola carrera universitaria, la devuelve directamente (como unico elemento), pero
+			// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+			$indices = array_keys($formacion['posgradoEspecializacion']['posgradoEspecializacion']);
+			if (is_numeric($indices[0])) {
+				$posgradoEspecializacion = $formacion['posgradoEspecializacion']['posgradoEspecializacion'];
+			} else {
+				$posgradoEspecializacion = [$formacion['posgradoEspecializacion']['posgradoEspecializacion']];
+			}
+
+			foreach ($posgradoEspecializacion as $posgrado) {
+				//Título
+				$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Título:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $posgrado['titulo'] . ' (' . $posgrado['situacionDeNivel'] . ')', $this->borde, 'L', false);
+				$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+				//Fecha de Egreso
+				if (isset($posgrado['fechaEgreso']) && $posgrado['fechaEgreso']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha egreso:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($posgrado['fechaEgreso'],'d/m/Y'), $this->borde, 1, 'L', false);
+				}
+
+				//Institución otorgante
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Inst. Otorgante:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-$this->ancho_etiqueta-4,  $this->alto_linea, end(explode(';',$posgrado['institucionesOtorgantes']['institucion']['rutaCompleta'])), $this->borde, 'L', false);
+
+				//Área
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Área:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['areaDelConocimiento']['area'])), $this->borde, 'L', false);
+
+				//Especialidad
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Especialidad:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['especialidad'])), $this->borde, 1, 'L', false);
+				//Tesina
+				if (isset($posgrado['trabajoFinal']['titulo']) && $posgrado['trabajoFinal']['titulo']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Trabajo Final:', $this->borde, 0, 'L', false);
+					$this->MultiCell($this->ancho_hoja-$this->ancho_etiqueta-4,  $this->alto_linea, $posgrado['trabajoFinal']['titulo'], $this->borde, 'L', false);
+				}
+				$this->Ln();
+			}
+			
+		}
+
+		if (isset($formacion['posgradoMaestria']) && $formacion['posgradoMaestria']) {
+			// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+			// Si existe una sola carrera universitaria, la devuelve directamente (como unico elemento), pero
+			// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+			$indices = array_keys($formacion['posgradoMaestria']['posgradoMaestria']);
+			if (is_numeric($indices[0])) {
+				$posgradoMaestria = $formacion['posgradoMaestria']['posgradoMaestria'];
+			} else {
+				$posgradoMaestria = [$formacion['posgradoMaestria']['posgradoMaestria']];
+			}
+
+			foreach ($posgradoMaestria as $posgrado) {
+				//Título
+				$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Título:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $posgrado['titulo'] . ' (' . $posgrado['situacionDeNivel'] . ')', $this->borde, 'L', false);
+				$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+				//Fecha de Egreso
+				if (isset($posgrado['fechaEgreso']) && $posgrado['fechaEgreso']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha egreso:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($posgrado['fechaEgreso'],'d/m/Y'), $this->borde, 1, 'L', false);
+				}
+
+				//Institución otorgante
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Inst. Otorgante:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-$this->ancho_etiqueta-4,  $this->alto_linea, end(explode(';',$posgrado['institucionesOtorgantes']['institucion']['rutaCompleta'])), $this->borde, 'L', false);
+
+				//Área
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Área:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['areaDelConocimiento']['area'])), $this->borde, 'L', false);
+
+				//Especialidad
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Especialidad:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['especialidad'])), $this->borde, 1, 'L', false);
+
+				//Tesina
+				if (isset($posgrado['trabajoFinal']['titulo']) && $posgrado['trabajoFinal']['titulo']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Trabajo Final:', $this->borde, 0, 'L', false);
+					$this->MultiCell($this->ancho_hoja-$this->ancho_etiqueta-4,  $this->alto_linea, $posgrado['trabajoFinal']['titulo'], $this->borde, 'L', false);
+				}
+				$this->Ln();
+			}
+			
+		}
+
+		if (isset($formacion['posgradoDoctorado']) && $formacion['posgradoDoctorado']) {
+			// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+			// Si existe una sola carrera universitaria, la devuelve directamente (como unico elemento), pero
+			// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+			$indices = array_keys($formacion['posgradoDoctorado']['posgradoDoctorado']);
+			if (is_numeric($indices[0])) {
+				$posgradoDoctorado = $formacion['posgradoDoctorado']['posgradoDoctorado'];
+			} else {
+				$posgradoDoctorado = [$formacion['posgradoDoctorado']['posgradoDoctorado']];
+			}
+
+			foreach ($posgradoDoctorado as $posgrado) {
+				//Título
+				$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Título:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $posgrado['titulo'] . ' (' . $posgrado['situacionDeNivel'] . ')', $this->borde, 'L', false);
+				$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+				//Fecha de Egreso
+				if (isset($posgrado['fechaEgreso']) && $posgrado['fechaEgreso']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha egreso:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($posgrado['fechaEgreso'],'d/m/Y'), $this->borde, 1, 'L', false);
+				}
+
+				//Institución otorgante
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Inst. Otorgante:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['institucionesOtorgantes']['institucion']['rutaCompleta'])), $this->borde, 1, 'L', false);
+
+				//Área
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Área:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['areaDelConocimiento']['area'])), $this->borde, 'L', false);
+
+				//Especialidad
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Especialidad:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['especialidad'])), $this->borde, 1, 'L', false);
+
+				//Tesina
+				if (isset($posgrado['tesis']['titulo']) && $posgrado['tesis']['titulo']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Tesis:', $this->borde, 0, 'L', false);
+					$this->MultiCell($this->ancho_hoja-$this->ancho_etiqueta-4,  $this->alto_linea, $posgrado['tesis']['titulo'], $this->borde, 'L', false);
+				}
+				$this->Ln();
+			}
+			
+		}
+
+		$formacion = $this->formacion['formacionComplementaria'];
+
+		if (isset($formacion['posdoctorado']) && $formacion['posdoctorado']) {
+			$this->subtitulo_seccion('Formación Complementaria: Posdoctorado');
+			
+			// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+			// Si existe una sola carrera universitaria, la devuelve directamente (como unico elemento), pero
+			// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+			$indices = array_keys($formacion['posdoctorado']['posdoctorado']);
+			if (is_numeric($indices[0])) {
+				$posdoctorado = $formacion['posdoctorado']['posdoctorado'];
+			} else {
+				$posdoctorado = [$formacion['posdoctorado']['posdoctorado']];
+			}
+
+			foreach ($posdoctorado as $posgrado) {
+				//Título
+				$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Título Plan Trabajo:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $posgrado['tituloPlanTrabajo'], $this->borde, 'L', false);
+				$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+				//Fecha de Egreso
+				if (isset($posgrado['fechaEgreso']) && $posgrado['fechaEgreso']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha egreso:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($posgrado['fechaEgreso'],'d/m/Y'), $this->borde, 1, 'L', false);
+				}
+
+				//Institución otorgante
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Inst. Otorgante:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['institucionOtorgante']['rutaCompleta'])), $this->borde, 1, 'L', false);
+
+				//Área
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Área:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['areaDelConocimiento']['area'])), $this->borde, 'L', false);
+
+				//Especialidad
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Especialidad:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$posgrado['especialidad'])), $this->borde, 1, 'L', false);
+
+				$this->Ln();
+			}
+			
+		}
+
+
+		if (isset($formacion['cursosYCapacitaciones']) && $formacion['cursosYCapacitaciones']) {
+			$this->subtitulo_seccion('Formación Complementaria: Cursos y Capacitaciones');
+			
+			// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+			// Si existe una sola carrera universitaria, la devuelve directamente (como unico elemento), pero
+			// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+			$indices = array_keys($formacion['cursosYCapacitaciones']['cursosYCapacitaciones']);
+			if (is_numeric($indices[0])) {
+				$cursosYCapacitaciones = $formacion['cursosYCapacitaciones']['cursosYCapacitaciones'];
+			} else {
+				$cursosYCapacitaciones = [$formacion['cursosYCapacitaciones']['cursosYCapacitaciones']];
+			}
+
+			foreach ($cursosYCapacitaciones as $capacitacion) {
+				//Denominacion
+				$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Denominación:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $capacitacion['denominacion'] . '(' . $capacitacion['situacionDeNivel'] . ')', $this->borde, 'L', false);
+				$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+				//Fecha de Egreso
+				if (isset($capacitacion['fechaEgreso']) && $capacitacion['fechaEgreso']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha egreso:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($capacitacion['fechaEgreso'],'d/m/Y'), $this->borde, 1, 'L', false);
+				}
+
+				//Tipo de Certificacion
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Tipo certificación:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$capacitacion['tipoCertificacion'])), $this->borde, 1, 'L', false);
+
+				//Institución otorgante
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Inst. Formación:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$capacitacion['institucionFormacion']['rutaCompleta'])), $this->borde, 1, 'L', false);
+
+				//Área
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Área:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$capacitacion['areaDelConocimiento']['area'])), $this->borde, 'L', false);
+
+				//Especialidad
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Especialidad:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, end(explode(';',$capacitacion['especialidad'])), $this->borde, 1, 'L', false);
+
+				$this->Ln();
+			}
+			
+		}
+
+		
+		if (isset($formacion['estanciasYPasantias']) && $formacion['estanciasYPasantias']) {
+			$this->subtitulo_seccion('Formación Complementaria: Estancias y Pasantías');
+			
+			// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+			// Si existe una sola carrera universitaria, la devuelve directamente (como unico elemento), pero
+			// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+			$indices = array_keys($formacion['estanciasYPasantias']['estanciasYPasantias']);
+			if (is_numeric($indices[0])) {
+				$estanciasYPasantias = $formacion['estanciasYPasantias']['estanciasYPasantias'];
+			} else {
+				$estanciasYPasantias = [$formacion['estanciasYPasantias']['estanciasYPasantias']];
+			}
+
+			foreach ($estanciasYPasantias as $pasantia) {
+				//Denominacion
+				$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Tema Plan Trabajo:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $pasantia['temaPlanTrabajo'], $this->borde, 'L', false);
+				$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+				//Fecha de Egreso
+				if (isset($pasantia['fechaFin']) && $pasantia['fechaFin']) {
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha egreso:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($pasantia['fechaFin'],'d/m/Y'), $this->borde, 1, 'L', false);
+				}
+
+				//Tipo de Certificacion
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Tipo de Tarea:', $this->borde, 0, 'L', false);
+				$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $pasantia['tipoTarea'], $this->borde, 1, 'L', false);
+
+				$indices = array_keys($pasantia['institucionesParticipantes']['institucionesParticipantes']);
+				if (is_numeric($indices[0])) {
+					$institucionesParticipantes = $pasantia['institucionesParticipantes']['institucionesParticipantes'];
+				} else {
+					$institucionesParticipantes = [$pasantia['institucionesParticipantes']['institucionesParticipantes']];
+				}
+
+				//Instituciones participantes
+				$this->setX($this->getX()+4);
+				$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Instituciones:', $this->borde, 0, 'L', false);
+				$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, implode(' / ', array_column(array_column($institucionesParticipantes,'organizacion'), 'rutaCompleta')), $this->borde, 'L', false);
+
+
+				$this->Ln();
+			}
+			
+		}
+
+		//Vuelvo al estado anterior
+		$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+		$this->ancho_etiqueta = $ancho_etiqueta_anterior;
+		
+	}
+
+	protected function datos_cargos()
+	{
+		$this->titulo_seccion('Cargos');
+		
+		if (isset($this->cargos['cargosDocencia'])) {
+			$cargos = $this->cargos['cargosDocencia'];
+
+			if (isset($cargos['superiorUniversitarioGradoPosgrado']['superiorUniversitarioGradoPosgrado'])) {
+				$this->subtitulo_seccion('Cargos en Docencia: Superior Universitario (Grado y Posgrado)');
+				$cargosUniversitarios = $cargos['superiorUniversitarioGradoPosgrado']['superiorUniversitarioGradoPosgrado'];
+				foreach ($cargosUniversitarios as $cargo) {
+					//Cargo
+					$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Cargo:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $cargo['cargo'], $this->borde, 1, 'L', false);
+					$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+					//Dedicacion
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Dedicación:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $cargo['dedicacion'], $this->borde, 1, 'L', false);
+
+					//Fecha de Inicio
+					if (isset($cargo['fechaInicio']) && $cargo['fechaInicio']) {
+						$this->setX($this->getX()+4);
+						$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Inicio:', $this->borde, 0, 'L', false);
+						$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($cargo['fechaInicio'],'d/m/Y'), $this->borde, 1, 'L', false);
+					}
+
+					//Fecha de Fin
+					if (isset($cargo['fechaFin']) && $cargo['fechaFin']) {
+						$this->setX($this->getX()+4);
+						$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Fin:', $this->borde, 0, 'L', false);
+						$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($cargo['fechaFin'],'d/m/Y'), $this->borde, 1, 'L', false);
+					}
+
+					//Institucion
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Institución:', $this->borde, 0, 'L', false);
+					$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $cargo['institucion']['rutaCompleta'], $this->borde, 'L', false);
+
+					//Tipo de cargo
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Tipo de Cargo:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $cargo['tipoCargo'], $this->borde, 1, 'L', false);
+
+					//Dedicacion horaria
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Dedicación Hs. Semana:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $cargo['dedicacionHorariaSemanal'], $this->borde, 1, 'L', false);
+
+					//Condicion
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Condición:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $cargo['condicion'], $this->borde, 1, 'L', false);
+					
+					$this->Ln();
+				}
+			}
+
+			
+			if (isset($cargos['cursosYCapacitaciones']['cursoYCapacitacion'])) {
+				$this->subtitulo_seccion('Cargos en Docencia: Cursos y Capacitaciones');
+
+				$cursosYCapacitaciones = $cargos['cursosYCapacitaciones']['cursoYCapacitacion'];
+				foreach ($cursosYCapacitaciones as $curso) {
+					//Tematica
+					$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, $curso['tipoDeCurso'], $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $curso['tematica'], $this->borde, 1, 'L', false);
+					$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+					//Esta validación se hace porque a veces, en este campo, viene un array 
+					if(!is_array($curso['cargo'])){
+						//Cargo
+						$this->setX($this->getX()+4);
+						$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Cargo:', $this->borde, 0, 'L', false);
+						$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $curso['cargo'], $this->borde, 1, 'L', false);
+					}
+
+					//Cargo
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Carga horaria total:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $curso['cargaHorariaTotal'] . ' horas.', $this->borde, 1, 'L', false);
+
+					//Fecha de Inicio
+					if (isset($curso['fechaInicio']) && $curso['fechaInicio']) {
+						$this->setX($this->getX()+4);
+						$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Inicio:', $this->borde, 0, 'L', false);
+						$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($curso['fechaInicio'],'d/m/Y'), $this->borde, 1, 'L', false);
+					}
+
+					//Fecha de Fin
+					if (isset($curso['fechaFin']) && $curso['fechaFin']) {
+						$this->setX($this->getX()+4);
+						$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Fin:', $this->borde, 0, 'L', false);
+						$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($curso['fechaFin'],'d/m/Y'), $this->borde, 1, 'L', false);
+					}
+
+					//Institucion
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Institución:', $this->borde, 0, 'L', false);
+					$this->MultiCell($this->getAnchoData()-$this->ancho_etiqueta-4,  $this->alto_linea, $curso['institucion']['rutaCompleta'], $this->borde, 'L', false);
+
+					$this->Ln();
+				}
+			}
+		}
+
+		if (isset($this->cargos['cargosID'])) {
+			$cargos = $this->cargos['cargosID'];
+
+			if (isset($cargos['categorizacionIncentivos']['categorizacionIncentivos'])) {
+				$this->subtitulo_seccion('Categorización Incentivos');
+							
+				// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+				// Si existe una sola categoria de incentivos, la devuelve directamente (como unico elemento), pero
+				// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+				$indices = array_keys($cargos['categorizacionIncentivos']['categorizacionIncentivos']);
+				if (is_numeric($indices[0])) {
+					$categoriasIncentivos = $cargos['categorizacionIncentivos']['categorizacionIncentivos'];
+				} else {
+					$categoriasIncentivos = [$cargos['categorizacionIncentivos']['categorizacionIncentivos']];
+				}
+
+				foreach ($categoriasIncentivos as $categoria) {
+
+					//Cargo
+					$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Categoria:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $categoria['categoria'], $this->borde, 1, 'L', false);
+					$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+					//Dedicacion
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Año:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $categoria['anioCategorizacionIncentivos'], $this->borde, 1, 'L', false);
+
+					$this->Ln();
+				}
+			}
+		}
+
+		if (isset($this->cargos['cargosGestionInstitucional'])) {
+			$cargos = $this->cargos['cargosGestionInstitucional'];
+
+			if (isset($cargos['cargoGestionInstitucional'])) {
+				$this->subtitulo_seccion('Cargos de Gestión Institucional');
+							
+				// Esta validación se debe a que CVAr no devuelve los datos de manera uniforme.
+				// Si existe un solo cargo, la devuelve directamente (como unico elemento), pero
+				// si existe mas de una, llega un array (entonces esto hace homogeneo el resultado: lo pasa a array si es un solo elemento)
+				$indices = array_keys($cargos['cargoGestionInstitucional']);
+				if (is_numeric($indices[0])) {
+					$cargos = $cargos['cargoGestionInstitucional'];
+				} else {
+					$cargos = [$cargos['cargoGestionInstitucional']];
+				}
+
+				foreach ($cargos as $cargo) {
+
+					//Cargo
+					$this->setFont($this->fuente_familia, 'B', $this->fuente_tamanio);
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Cargo:', $this->borde, 0, 'L', false);
+					if (strtolower($cargo['cargo']) != 'otro') {
+						$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $cargo['cargo'], $this->borde, 1, 'L', false);
+					} else {
+						$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $cargo['otroCargo'], $this->borde, 'L', false);
+					}
+					$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+
+					//Dedicacion
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Institución:', $this->borde, 0, 'L', false);
+					$this->MultiCell($this->getAnchoData()-4,  $this->alto_linea, $cargo['institucion']['rutaCompleta'], $this->borde, 'L', false);
+
+					//Fecha inicio
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Inicio:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($cargo['fechaInicio'],'d-m-Y'), $this->borde, 1, 'L', false);
+
+					//Fecha Fin
+					$this->setX($this->getX()+4);
+					$this->Cell($this->ancho_etiqueta, $this->alto_linea, 'Fecha Fin:', $this->borde, 0, 'L', false);
+					$this->Cell($this->getAnchoData()-4,  $this->alto_linea, $this->getFecha($cargo['fechaFin'],'d-m-Y'), $this->borde, 1, 'L', false);
+
+					$this->Ln();
+				}
+			}
+		}
+	}
+
+	private function getFecha($fechaCVAR, $format)
+	{
+		if (!$fechaCVAR) {
+			return '';
+		}
+		$fecha = new DateTime($fechaCVAR);
+		return $fecha->format($format);
+	}
+
+	protected function titulo_seccion($titulo)
+	{
+		$this->Ln();
+		$this->setFont('Times', 'BU', ($this->fuente_tamanio + 2));
+		$this->Cell($this->ancho_hoja, $this->alto_linea, $titulo, $this->borde, 1, 'L', false);
+		$this->setFont($this->fuente_familia, '', $this->fuente_tamanio);
+		$this->Ln();
+	}
+
+	protected function subtitulo_seccion($subtitulo)
+	{
+		$this->setFont($this->fuente_familia, 'U', $fuente_tamanio);
+		$this->Cell($this->ancho_etiqueta,  $this->alto_linea, $subtitulo, $this->borde, 1, 'L', false);
+		$this->setFont($this->fuente_familia, '', $fuente_tamanio);
+		$this->Ln();
+	}
+
+	/**
+	 * Retorna el ancho que queda en la hoja despues de imprimir la etiqueta
+	 * @return int
+	 */
+	private function getAnchoData()
+	{
+		return $this->ancho_hoja - $this->ancho_etiqueta - $this->sangria;
+	}
+
+	function mostrar()
+	{
+		$this->Output('I',$this->nombre_archivo.'.pdf');
+	}
+}
+?>

@@ -1,0 +1,255 @@
+<?php //ei_arbol($datos); ?>
+<?php 
+	//shorcuts mas usados
+	$ruta      = $datos['ruta_base']; 
+	$url       = $datos['url_base']; 
+	$dni       = $datos['inscripcion']['nro_documento'];
+	$conv      = $datos['inscripcion']['id_convocatoria'];
+	$tipo_beca = $datos['inscripcion']['id_tipo_beca'];
+	$antec     = $datos['antecedentes'];
+?>
+<div id="control_docum">
+	<fieldset>
+		<legend>Documentación personal</legend>
+		
+		<?php 
+			$ubicacion = "/docum_personal/$dni/dni.pdf";
+			if(file_exists($ruta . $ubicacion)) : 
+		?>
+		<div class="documento">
+			<span class='etiqueta'>Copia de DNI:</span>
+			<span class='dato'>	<a href="<?php echo $url.$ubicacion; ?>" target="_BLANK">Ver documento</a> </span>
+		</div>
+		<?php endif; ?>
+		
+		<?php 
+			$ubicacion = "/docum_personal/$dni/cuil.pdf";
+			if(file_exists($ruta . $ubicacion)) : 
+		?>
+		<div class="documento">
+			<span class='etiqueta'>Constancia de CUIL:</span>
+			<span class='dato'>	<a href="<?php echo $url.$ubicacion; ?>" target="_BLANK">Ver documento</a> </span>
+		</div>
+		<?php endif; ?>
+
+		<?php 
+			$ubicacion = "/becas/doc_por_convocatoria/$conv/$tipo_beca/$dni/Cert. Analitico.pdf";
+			if(file_exists($ruta . $ubicacion)) : 
+		?>
+		<div class="documento">
+			<span class='etiqueta'>Certificado Analítico:</span>
+			<span class='dato'>	<a href="<?php echo $url.$ubicacion; ?>" target="_BLANK">Ver documento</a> </span>
+		</div>
+		<?php endif; ?>
+
+		<?php 
+			$ubicacion = "/becas/doc_por_convocatoria/$conv/$tipo_beca/$dni/Insc. o Compromiso Posgrado.pdf";
+			if(file_exists($ruta . $ubicacion)) : 
+		?>
+		<div class="documento">
+			<span class='etiqueta'>Const. de Insc. a posgrado:</span>
+			<span class='dato'>	<a href="<?php echo $url.$ubicacion; ?>" target="_BLANK">Ver documento</a> </span>
+		</div>
+		<?php endif; ?>
+
+		<?php /*
+		$ubicacion = "/docum_personal/$dni/Titulo Grado.pdf";
+			if(file_exists($ruta . $ubicacion)) : 
+		*/ ?>
+		<!-- <div class="documento">
+			<span class='etiqueta'>Título de Grado:</span>
+			<span class='dato'>	<a href="<?php echo $url.$ubicacion; ?>" target="_BLANK">Ver documento</a> </span>
+		</div> -->
+		<?php /*endif;*/ ?>
+
+		<?php 
+			$ubicacion = "/becas/doc_por_convocatoria/$conv/$tipo_beca/$dni/Plan de Trabajo.pdf";
+			if(file_exists($ruta . $ubicacion)) : 
+		?>
+		<div class="documento">
+			<span class='etiqueta'>Plan de Trabajo:</span>
+			<span class='dato'>	<a href="<?php echo $url.$ubicacion; ?>" target="_BLANK">Ver documento</a> </span>
+		</div>
+		<?php endif; ?>
+	</fieldset>
+	<br>
+	<fieldset id="antecedentes">
+		<legend>Antecedentes</legend>
+		
+		<h3>Actividades docentes</h3>
+		<table>
+			<th>Cargo</th>
+			<th>Desde</th>
+			<th>Hasta</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['activ_docentes'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/activ_docente/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['cargo']; ?></td>
+					<td class="fecha"><?php echo $activ['anio_ingreso']; ?></td>
+					<td class="fecha"><?php echo $activ['anio_egreso']; ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Becas Obtenidas</h3>
+		<table>
+			<th>Tipo de Beca</th>
+			<th>Desde</th>
+			<th>Hasta</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['becas_obtenidas'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/becas_obtenidas/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['tipo_beca']; ?></td>
+					<td class="fecha"><?php echo date('d-m-Y',strtotime($activ['fecha_desde'])); ?></td>
+					<td class="fecha"><?php echo date('d-m-Y',strtotime($activ['fecha_hasta'])); ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Conocimiento de Idiomas</h3>
+		<table>
+			<th>Idioma</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['conoc_idiomas'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/conocimiento_idiomas/'; 
+			?>
+				<tr>
+					<td class="centrado"><?php echo $activ['idioma']; ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Cursos de perfeccionamiento aprobados</h3>
+		<table>
+			<th>Tema</th>
+			<th>Fecha</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['cursos_perfec_aprob'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/cursos_perfec_aprob/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['tema']; ?></td>
+					<td class="fecha"><?php echo date('d-m-Y',strtotime($activ['fecha'])); ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Estudios afines</h3>
+		<table>
+			<th>Título</th>
+			<th>Desde</th>
+			<th>Hasta</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['estudios_afines'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/estudios_afines/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['titulo']; ?></td>
+					<td class="fecha"><?php echo $activ['anio_desde']; ?></td>
+					<td class="fecha"><?php echo $activ['anio_hasta']; ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Otras actividades</h3>
+		<table>
+			<th>Actividad</th>
+			<th>Título/Tema</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['otras_actividades'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/otras_actividades/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['actividad']; ?></td>
+					<td><?php echo $activ['titulo_tema']; ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Participación en el dictado de cursos</h3>
+		<table>
+			<th>Institución</th>
+			<th>Fecha</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['part_dict_cursos'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/part_dict_cursos/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['institucion']; ?></td>
+					<td class="fecha"><?php date('d-m-Y',strtotime($activ['fecha'])); ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Presentación en reuniones científicas</h3>
+		<table>
+			<th>Titulo trabajo</th>
+			<th>Fecha</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['presentacion_reuniones'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/presentacion_reuniones/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['titulo_trabajo']; ?></td>
+					<td class="fecha"><?php echo date('d-m-Y',strtotime($activ['fecha'])); ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+
+		<h3>Trabajos Publicados</h3>
+		<table>
+			<th>Datos de la publicación</th>
+			<th>Fecha</th>
+			<th>Documento</th>
+			<?php 
+				foreach($antec['trabajos_publicados'] as $activ) : 
+					$path = $url . '/doc_probatoria/' . $dni . '/trabajos_publicados/'; 
+			?>
+				<tr>
+					<td><?php echo $activ['datos_publicacion']; ?></td>
+					<td class="fecha"><?php echo date('d-m-Y',strtotime($activ['fecha'])); ?></td>
+					<td class="enlace_documento">
+						<a href="<?php echo $path . $activ['doc_probatoria']; ?>" target="_BLANK">Ver</a>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+	</fieldset>
+
+</div>

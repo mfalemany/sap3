@@ -1,0 +1,347 @@
+<?php
+class co_comision_asesora
+{
+	function es_integrante_comision_asesora($nro_documento)
+	{
+		$sql = "select * from be_comision_asesora_integrante where id_convocatoria = (
+					select max(id_convocatoria) from be_convocatoria_beca where id_tipo_convocatoria = 3
+				) and nro_documento = " . quote($nro_documento);
+
+		$resultado = toba::db()->consultar($sql);
+		return (count($resultado) > 0);
+	}
+
+	function get_comisiones_asesoras($filtro = array())
+	{
+		$where = array();
+		if (isset($filtro['id_convocatoria'])) {
+			$where[] = "ca.id_convocatoria = ".quote($filtro['id_convocatoria']);
+		}
+		$sql = "SELECT
+			ca.id_area_conocimiento,
+			ca.id_convocatoria,
+			ac.nombre AS area_conocimiento,
+			cb.convocatoria
+		FROM be_comision_asesora as ca
+		LEFT JOIN be_convocatoria_beca as cb on ca.id_convocatoria = cb.id_convocatoria
+		LEFT JOIN sap_area_conocimiento as ac on ac.id = ca.id_area_conocimiento
+		ORDER BY ca.id_convocatoria";
+		if (count($where)>0) {
+			$sql = sql_concatenar_where($sql, $where);
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	function get_integrantes_comision($filtro = array())
+	{
+		//obtengo los integrantes de la comisión a la que pertenece el usuario actualmente logueado
+		$sql = "SELECT id_convocatoria,id_area_conocimiento 
+				FROM be_comision_asesora_integrante AS inte
+				WHERE nro_documento = ".quote(toba::usuario()->get_id())."
+				--WHERE nro_documento = ".quote(toba::usuario()->get_id())."
+				AND id_convocatoria = (SELECT MAX(id_convocatoria) FROM be_convocatoria_beca WHERE id_tipo_convocatoria = 3)";
+
+		$datos = toba::db()->consultar_fila($sql);
+		if(!$datos){
+			return array();
+		}
+		$sql = "SELECT inte.nro_documento, per.apellido||', '||per.nombres AS evaluador
+				FROM be_comision_asesora_integrante AS inte
+				LEFT JOIN sap_personas AS per ON per.nro_documento = inte.nro_documento
+				WHERE id_convocatoria = ".quote($datos['id_convocatoria'])."
+				AND id_area_conocimiento = ".quote($datos['id_area_conocimiento'])."
+				ORDER BY 2";
+		return toba::db()->consultar($sql);
+	}
+
+	function get_criterios_evaluacion($inscripcion)
+	{
+		$where = array();
+		if(isset($inscripcion['id_convocatoria'])){
+			$where[] = 'cri.id_convocatoria = '.$inscripcion['id_convocatoria'];
+		}
+		if(isset($inscripcion['id_tipo_beca'])){
+			$where[] = 'cri.id_tipo_beca = '.$inscripcion['id_tipo_beca'];
+		}
+		$sql = "SELECT * FROM be_tipo_beca_criterio_eval AS cri";
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+	}
+
+	function get_criterio_descripcion($id_criterio_evaluacion)
+	{
+		return toba::db()->consultar_fila("SELECT criterio_evaluacion FROM be_tipo_beca_criterio_eval WHERE id_criterio_evaluacion = ".quote($id_criterio_evaluacion));
+	}
+
+	function get_puntaje_maximo($id_criterio_evaluacion)
+	{
+		return toba::db()->consultar_fila("SELECT puntaje_maximo FROM be_tipo_beca_criterio_eval WHERE id_criterio_evaluacion = ".quote($id_criterio_evaluacion));
+	}
+
+	function get_ayn_evaluador($nro_documento)
+	{
+		return toba::db()->consultar_fila("SELECT apellido||', '||nombres FROM sap_personas WHERE nro_documento = ".quote($nro_documento));
+	}
+
+	function get_detalles_dictamen($inscripcion)
+	{
+		$sql = "select 
+				det.id_criterio_evaluacion, 
+				cri.criterio_evaluacion, 
+				det.puntaje as asignado, 
+				cri.puntaje_maximo, 
+				dic.justificacion_puntajes, 
+				dic.evaluadores
+			from be_dictamen as dic
+			left join be_dictamen_detalle as det 
+			    on det.tipo_dictamen = dic.tipo_dictamen
+			    and det.nro_documento = dic.nro_documento
+			    and det.id_tipo_beca = dic.id_tipo_beca
+			    and det.id_convocatoria = dic.id_convocatoria
+			left join be_tipo_beca_criterio_eval as cri on cri.id_criterio_evaluacion = det.id_criterio_evaluacion
+			WHERE dic.nro_documento = ".quote($inscripcion['nro_documento'])."
+			AND dic.id_convocatoria = ".quote($inscripcion['id_convocatoria'])."
+			AND dic.id_tipo_beca = ".quote($inscripcion['id_tipo_beca'])."
+			AND dic.tipo_dictamen = 'C'";
+		return toba::db()->consultar($sql);
+	}
+
+	function get_dictamen($inscripcion)
+	{
+		$sql = "select dic.nro_documento, dic.id_convocatoria, dic.id_tipo_beca, dic.justificacion_puntajes, dic.usuario_id,  
+			        array_to_string( 
+			            (select array_agg(upper(apellido)||', '||nombres) as evaluador 
+			            from sap_personas 
+			            --where nro_documento = any (string_to_array(dic.evaluadores,'/'))
+			            where nro_documento = any (string_to_array(dic.evaluadores,'/'))) 
+			        ,'/') as evaluadores,
+			        per.apellido||', '||per.nombres as usuario,
+			    	originalidad, 
+					claridad_formulacion_obj,
+					adecuacion_disenio,
+					factibilidad,
+					calidad_de_propuesta
+			    from be_dictamen as dic
+			    left join sap_personas as per on per.nro_documento = dic.usuario_id
+			    where dic.id_convocatoria = ".quote($inscripcion['id_convocatoria'])."
+			    and dic.id_tipo_beca = ".quote($inscripcion['id_tipo_beca'])."
+			    and dic.nro_documento = ".quote($inscripcion['nro_documento'])."
+			    and dic.tipo_dictamen = 'C'";
+		return toba::db()->consultar_fila($sql);
+	}
+
+	//retorna el id de area de conocimiento del usuario recibido como parámetro
+	function get_area_conocimiento_evaluador($nro_documento)
+	{
+		$sql = "SELECT id_area_conocimiento 
+				FROM be_comision_asesora_integrante 
+				WHERE nro_documento = ".quote($nro_documento) . "
+				AND id_convocatoria = (
+					SELECT MAX(id_convocatoria) 
+					FROM be_comision_asesora_integrante 
+					WHERE nro_documento = " . quote($nro_documento) . ")";
+		$resultado = toba::db()->consultar_fila($sql);
+		return (count($resultado)) ? $resultado['id_area_conocimiento'] : '';
+	}
+
+	/**
+	 * Obtiene todos los detalles que se le muestran al postulante en la opción de seguimiento. Esto incluye el resultado de la admisibilidad, la evaluación de comision y junta
+	 */
+	function get_detalles_seguimiento($inscripcion)
+	{
+		$cumplimientos = toba::consulta_php('co_becas')->get_cumplimientos_becario(
+			$inscripcion['nro_documento'],$inscripcion['id_convocatoria'],$inscripcion['id_tipo_beca']
+		);
+		
+		$where  = "WHERE padre.nro_documento = ".quote($inscripcion['nro_documento'])."
+					AND padre.id_tipo_beca    = ".quote($inscripcion['id_tipo_beca'])."
+					AND padre.id_convocatoria = ".quote($inscripcion['id_convocatoria']);
+
+		$sql = "SELECT admisible, beca_otorgada, observaciones FROM be_inscripcion_conv_beca AS padre $where"; 
+		$adm = toba::db()->consultar_fila($sql);
+
+		$sql                    = "SELECT puntaje FROM be_inscripcion_conv_beca as padre $where";
+		$resultado              = toba::db()->consultar_fila($sql);
+		$inscripcion['puntaje'] = $resultado['puntaje']; 
+
+		/* DICTAMEN DE COMISION */
+		$sql = "SELECT justificacion_puntajes as justificacion,
+				array_to_string( 
+					    (SELECT array_agg(upper(apellido)||', '||nombres) AS evaluador 
+					    FROM sap_personas 
+					    WHERE nro_documento = ANY (string_to_array(padre.evaluadores,'/'))) 
+					,'/') AS evaluadores
+			  FROM be_dictamen AS padre $where AND padre.tipo_dictamen = 'C'";
+		$datos['comision'] = toba::db()->consultar_fila($sql);
+
+			
+		$sql = "SELECT  cri.criterio_evaluacion, cri.puntaje_maximo, padre.puntaje
+				FROM be_dictamen_detalle as padre
+				LEFT JOIN be_tipo_beca_criterio_eval as cri USING (id_convocatoria, id_tipo_beca, id_criterio_evaluacion)
+				$where 
+				AND padre.tipo_dictamen = 'C'";
+		$datos['comision']['detalles'] = toba::db()->consultar($sql);
+
+		/* DICTAMEN DE JUNTA */
+		$sql = "SELECT justificacion_puntajes as justificacion FROM be_dictamen as padre $where AND padre.tipo_dictamen = 'J'";
+		$datos['junta'] = toba::db()->consultar_fila($sql);
+
+		$sql = "SELECT  cri.criterio_evaluacion, cri.puntaje_maximo, padre.puntaje
+				FROM be_dictamen_detalle as padre
+				LEFT JOIN be_tipo_beca_criterio_eval as cri USING (id_convocatoria, id_tipo_beca, id_criterio_evaluacion)
+				$where 
+				AND padre.tipo_dictamen = 'J'";
+		$datos['junta']['detalles'] = toba::db()->consultar($sql);
+
+		
+		return array(
+			'admisibilidad' => $adm, 
+			'dictamen'      => $datos, 
+			'inscripcion'   => $inscripcion, 
+			'cumplimientos' => $cumplimientos
+		);
+	}
+
+	function get_orden_merito($filtro = array())
+	{
+		$where = array();
+		if(isset($filtro['id_convocatoria'])){
+			$where[] = 'id_convocatoria = '.quote($filtro['id_convocatoria']);
+		}
+		if(isset($filtro['id_tipo_beca'])){
+			$where[] = 'id_tipo_beca = '.quote($filtro['id_tipo_beca']);
+		}
+		if(isset($filtro['postulante'])){
+			$where[] = 'apellido||nombres ilike '.quote('%'.$filtro['postulante'].'%');
+		}
+		if(isset($filtro['id_area_conocimiento'])){
+			$where[] = 'id_area_conocimiento = '.quote($filtro['id_area_conocimiento']);
+		}
+		if(isset($filtro['id_dependencia'])){
+			$where[] = 'id_dependencia = '.quote($filtro['id_dependencia']);
+		}
+		if(isset($filtro['lugar_trabajo_becario'])){
+			$where[] = 'lugar_trabajo_becario = '.quote($filtro['lugar_trabajo_becario']);
+		}
+		if(isset($filtro['beca_otorgada'])){
+			$where[] = 'not exists (select * from be_becas_otorgadas where nro_documento = tmp.nro_documento and id_convocatoria = tmp.id_convocatoria and id_tipo_beca = tmp.id_tipo_beca)';
+		}
+
+		$sql = "SELECT *, 
+					    (CASE WHEN (puntaje_junta <> 'No asignado') 
+					    	THEN puntaje_academico +    puntaje_junta::decimal 
+					    	ELSE puntaje_academico + puntaje_comision::decimal END)::decimal AS puntaje_final
+				FROM (
+				    SELECT  insc.id_convocatoria,
+				    		insc.id_tipo_beca,
+				    		CASE (SELECT suma_puntaje_academico FROM be_tipos_beca WHERE id_tipo_beca = insc.id_tipo_beca)
+				    			WHEN 'S' THEN insc.puntaje
+				    			ELSE 0 END AS puntaje_academico,
+				    		insc.id_area_conocimiento,
+				    		insc.beca_otorgada,
+				    		bo.fecha_desde,
+				    		bo.fecha_hasta,
+				    		bo.fecha_toma_posesion,
+				    		bo.nro_resol,
+				    		bo.estado AS estado_beca_otorgada,
+				    		CASE bo.estado 
+				    			WHEN 'A' THEN 'Otorgada' 
+				    			WHEN 'B' THEN 'Baja' 
+				    			ELSE 'No otorgada' END AS estado_beca_otorgada_desc,
+				    		ac.nombre AS area_conocimiento,
+				    		per.nro_documento,
+				    		per.cuil,
+				    		per.apellido,
+				    		per.nombres,
+				            upper(per.apellido)||', '||initcap(per.nombres) AS postulante,
+				            tipbec.tipo_beca,
+				            dep.nombre AS facultad,
+				            dep.id AS id_dependencia,
+				            lugtrab.nombre AS lugar_trabajo,
+				            CASE WHEN insc.id_tipo_beca in (2,3) THEN lugtrab.nombre ELSE dep.nombre END AS lugar,
+				            insc.lugar_trabajo_becario,
+				            dir.apellido||', '||dir.nombres AS director,
+				            --Cuando no se considera el puntaje académica, se retorna la leyenda 'No corresponde'
+				            CASE WHEN ((SELECT suma_puntaje_academico FROM be_tipos_beca WHERE id_tipo_beca = insc.id_tipo_beca) = 'N') 
+				            		THEN 'No corresponde' 
+				            		ELSE insc.puntaje::varchar END AS puntaje,
+				          --Puntaje de Comisión
+				          (SELECT sum(puntaje) 
+								FROM be_dictamen_detalle 
+								where tipo_dictamen = 'C' 
+								and nro_documento = insc.nro_documento 
+								and id_convocatoria = insc.id_convocatoria 
+				           and id_tipo_beca = insc.id_tipo_beca) AS puntaje_comision,
+				          -- Puntaje de Junta
+				          (SELECT sum(puntaje) 
+								FROM be_dictamen_detalle 
+								where tipo_dictamen = 'J' 
+								and nro_documento = insc.nro_documento 
+								and id_convocatoria = insc.id_convocatoria 
+								and id_tipo_beca = insc.id_tipo_beca)::varchar AS puntaje_junta
+				    FROM be_inscripcion_conv_beca AS insc
+				    left join sap_personas AS per on per.nro_documento = insc.nro_documento
+				    left join sap_personas AS dir on dir.nro_documento = insc.nro_documento_dir
+				    left join be_tipos_beca AS tipbec on tipbec.id_tipo_beca = insc.id_tipo_beca
+				    left join sap_dependencia AS dep on dep.id = insc.id_dependencia
+				    left join sap_dependencia AS lugtrab on lugtrab.id = insc.lugar_trabajo_becario
+				    left join sap_area_conocimiento AS ac on ac.id = insc.id_area_conocimiento
+				    left join be_becas_otorgadas AS bo ON 
+				    	bo.id_convocatoria = insc.id_convocatoria AND
+				    	bo.id_tipo_beca = insc.id_tipo_beca AND
+				    	bo.nro_documento = insc.nro_documento
+				    where insc.estado = 'C'
+				    and insc.admisible = 'S'
+				    and exists(
+				        SELECT * 
+				        FROM be_dictamen 
+				        where tipo_dictamen = 'C' 
+				        and nro_documento = insc.nro_documento 
+				        and id_convocatoria = insc.id_convocatoria 
+				        and id_tipo_beca = insc.id_tipo_beca
+				    )
+				) as tmp";
+			if(isset($filtro['campos_ordenacion'])){
+				foreach ($filtro['campos_ordenacion'] as $campo => $orden) {
+					$criterios_orden[] = $campo." ".$orden;
+				}
+				$sql .= " order by ".implode(', ',$criterios_orden);
+			}else{
+				$sql .= " order by puntaje_final DESC";
+			}
+
+			
+		if(isset($filtro['cantidad_becas']) && is_numeric($filtro['cantidad_becas']) ){
+			$sql .= " LIMIT ".$filtro['cantidad_becas'];	
+		}
+			
+		if(count($where)){
+			$sql = sql_concatenar_where($sql,$where);
+		}
+		return toba::db()->consultar($sql);
+		
+	}
+
+	/*$sql = "SELECT 
+					(SELECT puntaje FROM be_inscripcion_conv_beca WHERE nro_documento = dic.nro_documento AND id_tipo_beca = dic.id_tipo_beca AND id_convocatoria = dic.id_convocatoria) AS puntaje_inicial,
+					(SELECT sum(puntaje) FROM be_dictamen_detalle WHERE nro_documento = dic.nro_documento AND id_tipo_beca = dic.id_tipo_beca AND id_convocatoria = dic.id_convocatoria AND tipo_dictamen = 'C') AS puntaje_comision,
+					(SELECT justificacion_puntajes FROM be_dictamen WHERE nro_documento = dic.nro_documento AND id_tipo_beca = dic.id_tipo_beca AND id_convocatoria = dic.id_convocatoria AND tipo_dictamen = 'C') AS justificacion_comision,
+					(SELECT sum(puntaje) FROM be_dictamen_detalle WHERE nro_documento = dic.nro_documento AND id_tipo_beca = dic.id_tipo_beca AND id_convocatoria = dic.id_convocatoria AND tipo_dictamen = 'J') AS puntaje_junta,
+					(SELECT justificacion_puntajes FROM be_dictamen WHERE nro_documento = dic.nro_documento AND id_tipo_beca = dic.id_tipo_beca AND id_convocatoria = dic.id_convocatoria AND tipo_dictamen = 'J') AS justificacion_junta,
+					array_to_string( 
+					    (SELECT array_agg(upper(apellido)||', '||nombres) AS evaluador 
+					    FROM sap_personas 
+					    WHERE nro_documento = ANY (string_to_array(dic.evaluadores,'/'))) 
+					,'/') AS evaluadores
+				FROM be_dictamen AS dic
+				WHERE dic.nro_documento = ".quote($inscripcion['nro_documento'])."
+				AND dic.id_tipo_beca    = ".quote($inscripcion['id_tipo_beca'])."
+				AND dic.id_convocatoria = ".quote($inscripcion['id_convocatoria'])."
+				AND tipo_dictamen = 'C'";*/
+
+	
+
+}
+?>

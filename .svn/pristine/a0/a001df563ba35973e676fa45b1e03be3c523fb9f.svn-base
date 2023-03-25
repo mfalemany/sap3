@@ -1,0 +1,80 @@
+<?php
+class ci_logs extends sap_ci
+{
+	protected $s__log;
+	//-----------------------------------------------------------------------------------
+	//---- cu_eventos_log ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_eventos_log(sap_ei_cuadro $cuadro)
+	{
+		if (isset($this->s__log['log'])) {
+			$ruta_log = toba::consulta_php('helper_archivos')->ruta_base() . 'logs/' . $this->s__log['log'];
+			
+			if(!file_exists($ruta_log)) {
+				return;
+			}
+			
+			$datos = file($ruta_log);
+			if ($datos) {
+				$logs  = [];
+				foreach ($datos as $linea_log) {
+					$evento = iconv(mb_detect_encoding($linea_log),'ISO-8859-1',substr($linea_log,21));
+					$logs[] = [
+						'fecha_hora' => substr($linea_log, 0, 19), 
+						'evento'     => ($evento !== false) ? $evento : $linea_log
+					];
+				}
+				$cuadro->set_datos($logs);
+			}
+			
+		}
+	}
+
+	function evt__cu_eventos_log__seleccion($seleccion)
+	{
+	}
+
+	function conf_evt__cu_eventos_log__seleccion(toba_evento_usuario $evento, $fila)
+	{
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_filtro ------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_filtro(sap_ei_formulario $form)
+	{
+		if (isset($this->s__log['log'])) {
+			//Solo el campo log se guarda... los otros filtros se manejan con JS
+			$form->set_datos(['log' => $this->s__log['log']]);
+		}
+	}
+
+	function evt__form_filtro__ver_log($datos)
+	{
+		$this->s__log = $datos;
+	}
+
+	public function extender_objeto_js()
+	{
+		echo "
+		var ef_filtro = {$this->get_objeto_js()}.dep('form_filtro').ef('filtro');
+		var cuadro = {$this->get_objeto_js()}.dep('cu_eventos_log');
+		var filtro = ef_filtro.input();
+		filtro.addEventListener('keyup',function(e){
+			var tabla = cuadro.cuerpo();
+			var filas = tabla.querySelectorAll('tr');
+			filas.forEach(function(fila){
+				console.log(fila.textContent.indexOf(ef_filtro.get_estado()));
+				if (fila.textContent.toLowerCase().indexOf(ef_filtro.get_estado().toLowerCase()) === -1) {
+					fila.style.display = 'none';
+				} else {
+					fila.style.display = 'table-row';
+				}
+			});
+		})";
+	}
+
+}
+?>

@@ -1,0 +1,240 @@
+<?php
+class ci_comunicacion_edicion extends sap_ci
+{
+	
+	//-----------------------------------------------------------------------------------
+	//---- Configuraciones del CI ------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function conf()
+	{
+		toba::memoria()->eliminar_dato('comunicacion_id');
+		$comunicacion = $this->get_datos('comunicacion')->get();
+
+		if ($comunicacion) {
+			//Obtengo los detalles de la convocatoria de la comunicacion
+			$com_convocatoria = toba::consulta_php('co_convocatorias')->get_detalles_convocatoria($comunicacion['sap_convocatoria_id']);
+			//si la comunicación está cerrada
+			if(isset($comunicacion['estado']) && $comunicacion['estado'] == 'C'){
+				if($this->en_etapa_modificacion($comunicacion['id'])){
+					if($comunicacion['aval']){
+						$this->eliminar_eventos(array('guardar','presentar'));
+						$this->bloquear_formularios();
+					}
+					$this->eliminar_eventos(array('presentar'));
+				}else{
+					$this->eliminar_eventos(array('guardar','presentar'));
+					$this->bloquear_formularios();
+				}
+				$this->eliminar_eventos(array('eliminar'));	
+				
+			}
+			//El evento del CI no envía parametros al listener. Con esto, tengo identificada la comunicación para generar el PDF
+			toba::memoria()->set_dato('comunicacion_id',$comunicacion['id']);
+		}else{
+			$this->eliminar_eventos(array('eliminar','presentar','imprimir'));
+		}
+
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Eventos del CI ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function evt__cancelar()
+	{
+			toba::memoria()->eliminar_dato('comunicacion');
+			$this->get_datos()->resetear();
+			$this->controlador()->set_pantalla('p_comunicaciones');
+	}
+
+	function evt__eliminar()
+	{
+
+			$this->get_datos()->eliminar();
+			toba::memoria()->eliminar_dato('comunicacion');
+			$this->controlador()->set_pantalla('p_comunicaciones');
+
+	}
+
+	function evt__presentar()
+	{
+		$comunicacion = $this->get_datos('comunicacion')->get();
+		if( ! toba::consulta_php('co_comunicaciones')->existe_extendido($comunicacion['id'])){
+			throw new toba_error('No se puede cerrar la presentación porque no se encuentra el archivo del extendido. Por favor, seleccione un archivo PDF para subir en el campo "Extendido"');
+		}else{
+			$this->get_datos()->tabla('comunicacion')->set(array('estado'=>'C'));
+			$this->get_datos()->sincronizar();
+			toba::notificacion()->agregar('Se ha cerrado la presentación. Recuerde que su director/a debe dar su aval, ingresando desde su cuenta al sistema SAP (opción "Becas -> Avalar Comunicación Científica)"','info');
+		}
+	}
+
+	function evt__guardar()
+	{
+		try{
+			$this->get_datos()->sincronizar();
+			toba::notificacion()->agregar('Los cambios se guardaron con éxito!','info');
+			toba::notificacion()->agregar('Es importante que mantenga sus datos personales actualizados. Para hacerlo, seleccione "Modificar mis datos" en el menú','warning');
+		}catch (Exception $e){
+			toba::notificacion()->error('Ocurrió un error',$e->getMessage());
+		}
+	}
+	//-----------------------------------------------------------------------------------
+	//---- form_com_cabecera ------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_com_cabecera(sap_ei_formulario $form)
+	{
+
+		$datos = $this->get_datos('comunicacion')->get();
+		//Armo el template
+		$template = $this->armar_template('controladores/comunicaciones/administrar_comunicaciones/template_comunicacion_edicion.php',$datos);
+		$form->set_template($template);
+
+		
+		if ($datos) {
+			$datos['extendido'] = toba::consulta_php('co_comunicaciones')->existe_extendido($datos['id']);
+			$form->set_solo_lectura(array('sap_area_beca_id'));
+			$form->ef('sap_area_beca_id')->set_descripcion('Este campo se encuentra bloqueado porque ya se asignó un orden de poster basado en esta selección');
+		}else{
+			$form->desactivar_efs(array('extendido'));
+		}
+		
+		$form->set_datos($datos);
+
+	}
+
+	function evt__form_com_cabecera__modificacion($datos)
+	{
+		$dt = $this->get_datos()->tabla('comunicacion')->get();
+		
+		//Esta linea es importante por si un usuario con perfil administrador abre la comunicacion y la guarda. Evita que sea asignado el ID de usuario a la comunicación ajena. Si ya esxiste, no se toca.
+		$dni = ($dt) ? $dt['usuario_id'] : toba::usuario()->get_id(); 
+		
+
+		//si no existe orden de poster asignado
+		if( ! $datos['orden_poster']){
+			//obtener un orden de poster para esta convocatoria y area de conocimiento
+			$datos['orden_poster'] = $this->get_orden_poster($this->controlador()->s__convocatoria,$datos['sap_area_beca_id']);
+		}
+		
+		//Seteo el nombre de usuario
+		$datos['usuario_id'] = $dni;
+		//Seteo el ID de convocatoria							
+		$datos['sap_convocatoria_id']=$this->controlador()->s__convocatoria;
+
+		if(isset($datos['extendido']) && $datos['extendido']){
+			if( ! $this->es_pdf($datos['extendido'])) throw new toba_error('El archivo cargado no es un PDF válido','Si bien el archivo tiene extensión PDF, el contenido no se corresponde con un PDF válido.','Informe Extendido no válido');
+			$this->subir_extendido($datos['id'], $datos['extendido']);
+		}
+		
+		$this->get_datos('comunicacion')->set($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_evaluaciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_evaluaciones(sap_ei_cuadro $cuadro)
+	{
+		$comunicacion = isset($this->controlador()->s__comunicacion) ? $this->controlador()->s__comunicacion : false;
+		
+		if (!toba::consulta_php('co_comunicaciones')->becarios_pueden_ver_evaluaciones($comunicacion['sap_convocatoria_id'])) {
+			if (!$this->soy_admin()) {
+				$cuadro->agregar_notificacion('Las evaluaciones todavìa no están disponibles');
+				$this->dep('cu_evaluaciones')->colapsar();
+				return;
+			} else {
+				$cuadro->agregar_notificacion('Estas evaluaciones no son visibles por el becario');
+			}
+		}
+
+		if ($comunicacion) {
+			$evaluaciones = toba::consulta_php('co_comunicaciones')->get_evaluaciones_comunicacion($comunicacion['id']);
+			
+			//Si no es admin, solo ve la cantidad de evaluadores que participaron (no quienes)
+			if (!$this->soy_admin()) {
+				$evaluaciones = array_map(function($eval){
+					$eval['evaluadores'] = sprintf('%s evaluadores participaron en la evaluación', count(explode('/', $eval['evaluadores'])));
+					return $eval;
+				}, $evaluaciones);
+			}
+
+			$cuadro->set_datos($evaluaciones);      
+		}else{
+			$this->dep('cu_evaluaciones')->colapsar();
+		}
+
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Auxiliares -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function get_datos($tabla = NULL)
+	{
+		return ($tabla) ? $this->dep('datos')->tabla($tabla) : $this->dep('datos');
+	}
+
+	protected function get_orden_poster($convocatoria,$area_conocimiento){
+		$orden = toba::consulta_php('co_comunicaciones')->get_orden_poster($convocatoria,$area_conocimiento);
+		return $orden;
+	}
+
+	function eliminar_eventos($eventos = array())
+	{
+		foreach ($eventos as $evento) {
+			if($this->pantalla()->existe_evento($evento)){
+				$this->pantalla()->eliminar_evento($evento);
+			}
+		}
+	}
+
+	function bloquear_formularios()
+	{
+		//bloqueo todos los formularios
+		$formularios = $this->get_dependencias_clase('form');
+		foreach($formularios as $form){
+			$this->dep($form)->set_solo_lectura();
+			if(strpos(get_class($this->dep($form)),'_ml') !== FALSE){
+				$this->dep($form)->desactivar_agregado_filas();  
+			}
+		}
+	}
+
+
+	function subir_extendido($id_comunicacion, $archivo)
+	{
+		$carpeta = "comunicaciones/$id_comunicacion";
+		if( ! toba::consulta_php('helper_archivos')->subir_archivo($archivo,$carpeta,'extendido.pdf',array('pdf'))){
+			throw new toba_error('Ocurrió un error al intentar subir el archivo del extendido. Por favor, comuniquese con la SGCyT para obtener asistencia.');
+		}
+	}
+
+
+	/**
+	 * Valida si una comunicación se encuentra en etapa de modificacion. Esto es, cuando la comunicación ya se cerró por parte del postulante, y luego fue evaluada, solicitandose modificaciones. En este caso, aunque la comunicación esté cerrada, el postulante puede modificala
+	 * @param  integer $id_comunicacion Id de la comunicación que se está analizando
+	 * @return boolean                  Retorna TRUE en caso de que la comunicación se encuentre en condiciones de ser modificada, FALSE en caso contrario
+	 */
+	function en_etapa_modificacion($id_comunicacion)
+	{
+		//obtengo los detalles de la comunicacion
+		$com = toba::consulta_php('co_comunicaciones')->get_comunicaciones(array('id'=>$id_comunicacion));
+
+		//obtengo los detalles de la convocatoria a la que pertenece
+		$convocatoria = toba::consulta_php('co_convocatorias')->get_convocatorias(array('id'=>$com[0]['sap_convocatoria_id']));
+		
+		//si la convocatoria ya cerró
+		if($convocatoria[0]['fecha_hasta'] < date('Y-m-d')){
+			//pero todavía está en fecha para editar
+			if($convocatoria[0]['limite_edicion'] >= date('Y-m-d')){
+				if(toba::consulta_php('co_comunicaciones')->solicitaron_modificaciones($id_comunicacion)){
+					return TRUE;	
+				}
+			}
+		}
+		return FALSE;
+	}
+
+
+}
+?>

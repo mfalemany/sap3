@@ -1,0 +1,190 @@
+<?php
+class ci_cambiar_clave extends sap_ci
+{
+	private $s__datos;
+
+	function conf()
+	{
+		$usuario = toba::usuario()->get_id();
+		if(is_numeric($usuario)){
+			$this->get_datos()->resetear();
+			$this->get_datos()->cargar(array('nro_documento'=>$usuario));
+			if( ! toba::consulta_php('co_personas')->es_docente($usuario)){
+				$this->pantalla()->eliminar_dep('form_persona_aux');
+			}
+		}
+	}
+	//-----------------------------------------------------------------------------------
+	//---- form_cambio_clave ------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_cambio_clave(sap_ei_formulario $form)
+	{
+		$datos = toba::instancia()->get_info_usuario(toba::usuario()->get_id());
+		$mail = $datos['email'];
+		if($mail){
+			$this->s__datos['mail'] = $mail;	
+			$form->set_datos($this->s__datos);
+		}
+	}
+
+	function evt__form_cambio_clave__guardar($datos)
+	{
+		
+		//le asigno la clave y el permiso al proyecto
+		if( ! empty($datos['clave_nueva'])){
+			if( ! ($datos['clave_nueva'] == $datos['clave_nueva_repetir'])){
+				toba::notificacion()->agregar('Las claves ingresadas no coinciden','error');
+				return;
+			}
+			if( strlen($datos['clave_nueva']) <= 5 ){
+				toba::notificacion()->agregar('Debe ingresar una clave de al menos seis caracteres','error');
+				return;
+			}
+			toba::usuario()->set_clave_usuario($datos['clave_nueva'], toba::usuario()->get_id());
+		}
+
+		if(empty($datos['mail'])){
+			toba::notificacion()->error('Debe ingresar una dirección de correo','','Dirección de correo no válida');
+			return;
+		}
+		$this->actualizar_mail(toba::usuario()->get_id(),$datos['mail']);
+	}
+
+	function actualizar_mail($usuario,$mail)
+	{
+
+		if(empty($usuario) || empty($mail)){
+			return false;
+		}
+		$sql = "UPDATE apex_usuario SET email = ".quote($mail)." WHERE usuario = ".quote($usuario);
+		
+		//falta validar la respuesta de ejecucion de esta consulta!!!
+		toba::instancia()->get_db()->ejecutar($sql);
+	}
+
+	function conf__form_persona(sap_ei_formulario $form)
+	{
+		$form->evento('modificacion')->set_en_botonera();		
+		$datos = $this->get_datos('sap_personas')->get();
+		if($datos){
+			$form->set_datos($datos);	
+			
+			$ruta = toba::consulta_php('helper_archivos')->ruta_base() . 'docum_personal/' . $datos['nro_documento'] . "/";
+			
+			if ( file_exists($ruta . 'dni.pdf')) {
+				$form->ef('archivo_dni')->set_estado(1);
+			}
+			if ( file_exists($ruta . 'cbu.pdf')) {
+				$form->ef('archivo_cbu')->set_estado(1);
+			}
+			if ( file_exists($ruta . 'cvar.pdf')) {
+				$form->ef('archivo_cvar')->set_estado(1);
+			}
+			if ( file_exists($ruta . 'cuil.pdf')) {
+				$form->ef('archivo_cuil')->set_estado(1);
+			}
+
+		}else{
+			$form->set_solo_lectura();
+			$form->set_efs_obligatorios($form->get_nombres_ef(),FALSE);
+		}
+		$form->ef('mail')->set_obligatorio(false);
+		$form->set_solo_lectura(array('nro_documento'));
+
+		//Datos para el template
+		$ruta_base = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('ruta_base_documentos') . "/";
+		$dni   = $datos['nro_documento'];
+		
+		$datos = [
+			'ruta_base'     => $ruta_base,
+			'url_base'      => toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos'),
+			'nro_documento' => $datos['nro_documento'],
+			'existe_dni'    => toba::consulta_php('helper_archivos')->existe_documento_personal($dni, 'dni'),
+			'existe_cuil'   => toba::consulta_php('helper_archivos')->existe_documento_personal($dni, 'cuil'),
+			'existe_cvar'   => toba::consulta_php('helper_archivos')->existe_documento_personal($dni, 'cvar'),
+			'existe_cbu'    => toba::consulta_php('helper_archivos')->existe_documento_personal($dni, 'cbu'),
+		];
+		
+		$template = $this->armar_template(__DIR__ . '/template_form_persona.php', $datos);
+		$form->set_template($template);
+
+	}
+
+	function evt__form_persona__modificacion($datos){
+		if(!$datos['nro_documento']){
+			return;
+		}
+
+		$ubicacion = 'docum_personal/' . $datos['nro_documento'] . "/";
+		
+		if(isset($datos['archivo_cvar']) && $datos['archivo_cvar']){
+			toba::consulta_php('helper_archivos')->subir_archivo($datos['archivo_cvar'], $ubicacion, 'cvar.pdf',array('pdf'));
+			$datos['archivo_cvar'] = 'cvar.pdf';
+		}else{
+			unset($datos['archivo_cvar']);
+		}
+
+		if(isset($datos['archivo_dni']) && $datos['archivo_dni']){
+			toba::consulta_php('helper_archivos')->subir_archivo($datos['archivo_dni'], $ubicacion,'dni.pdf', array('pdf'));
+			unset($datos['archivo_dni']);
+		}
+
+		if(isset($datos['archivo_cbu']) && $datos['archivo_cbu']){
+			toba::consulta_php('helper_archivos')->subir_archivo($datos['archivo_cbu'], $ubicacion,'cbu.pdf');
+			unset($datos['archivo_cbu']);
+		}
+
+		if(isset($datos['archivo_cuil']) && $datos['archivo_cuil']){
+			toba::consulta_php('helper_archivos')->subir_archivo($datos['archivo_cuil'], $ubicacion,'cuil.pdf');
+			unset($datos['archivo_cuil']);
+		}
+		
+		$this->get_datos('sap_personas')->set($datos);
+		$this->get_datos('sap_personas')->sincronizar();
+	}
+
+	function extender_objeto_js()
+	{
+		echo "
+		id = {$this->dep('form_cambio_clave')->objeto_js}.ef('mail')._id_form;
+		
+		//cada vez que se levanta la tecla, se actualiza el esclavo
+		$('#'+id).on('keyup',sincronizar);
+		
+		function sincronizar(){
+			//obtengo el ID del mail de la persona
+			id_persona = {$this->dep('form_persona')->objeto_js}.ef('mail')._id_form;
+			//actualizo sus datos
+			$('#'+id_persona).prop('value',$('#'+id).prop('value'));
+		}";
+	}
+
+
+
+	//-----------------------------------------------------------------------------------
+	//---- form_persona_aux -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_persona_aux(sap_ei_formulario $form)
+	{
+		$datos = $this->get_datos('sap_personas_aux')->get();
+		if($datos){
+			$form->set_datos($datos);
+		}
+	}
+
+	function evt__form_persona_aux__guardar($datos)
+	{
+		$this->get_datos('sap_personas_aux')->set($datos);
+		$this->get_datos()->sincronizar();
+	}
+
+	function get_datos($tabla = NULL)
+	{
+		return ($tabla) ? $this->dep('datos')->tabla($tabla) : $this->dep('datos');
+	}
+
+
+}
+?>

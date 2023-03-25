@@ -1,0 +1,105 @@
+<?php
+class sap_ci extends toba_ci
+{
+	private $dias = array(0=>'domingo',1=>'lunes',2=>'martes',3=>'miércoles',4=>'jueves',5=>'viernes',6=>'sábado');
+	private $meses = array(1=>'enero',2=>'febrero',3=>'marzo',4=>'abril',5=>'mayo',6=>'junio',7=>'julio',8=>'agosto',9=>'septiembre',10=>'octubre',11=>'noviembre',12=>'diciembre');
+	private $cat_incentivos = array(null=>'No categorizado',1=>'Categoría I',2=>'Categoría II',3=>'Categoría III',4=>'Categoría IV',5=>'Categoría V');
+
+
+	private function recorrer_datos(&$template, $datos)
+	{
+		foreach($datos as $clave => $valor){
+			if(is_array($valor)){
+				$this->recorrer_datos($template,$valor);
+			}else{
+				$template = str_replace('{{'.strtoupper($clave).'}}',$valor,$template);	
+			}
+		}
+	}
+	/**
+	 * =============================================================================
+	 * ELIMINAR HASTA ACA 
+	 * =============================================================================
+	 */
+
+	function es_pdf($detalles_archivo)
+	{
+		return (mime_content_type($detalles_archivo['tmp_name']) == 'application/pdf');
+	}
+
+	//ESTA ES LA FUNCIÓN QUE TIENE QUE QUEDAR
+	function armar_template($archivo,$datos)
+	{	
+		ob_start();
+		include $archivo;
+		return ob_get_clean();
+	}
+
+	protected function get_dia($dia)
+	{
+		return $this->dias[$dia];
+	}
+	protected function get_mes($mes)
+	{
+		return $this->meses[$mes];
+	}
+
+	protected function get_meses()
+	{
+		return $this->meses;
+	}
+	protected function get_mes_desc($mes)
+	{
+		return $this->meses[intval($mes)];
+	}
+	protected function get_fecha_texto($time)
+	{
+		$dia = $this->get_dia(date('N',$time));
+		$mes = $this->get_mes(date('n',$time));
+		return $dia.' '.date('d').' de '.$mes.' de '.date('Y');
+	}
+
+	protected function fecha_dmy($fecha_ymd)
+	{
+		$fecha = new Datetime($fecha_ymd);
+		return $fecha->format('d-m-Y');
+	}
+
+	protected function soy_admin()
+	{
+		//Perfiles admintidos como "Administrador"
+		$perfiles_administrador = array('admin','admin_limitado');
+		//Perfiles que tiene asignados el usuario actualmente logueado
+		$perfiles_usuario = toba::usuario()->get_perfiles_funcionales();
+		//Si tiene al menos uno de los perfiles de administrador, se retorna TRUE
+		foreach ($perfiles_administrador as $perfil){
+			if(in_array($perfil,$perfiles_usuario)){
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
+
+
+	function calcular_edad($fechanacimiento){
+		list($anio,$mes,$dia) = explode("-",$fechanacimiento);
+		$anio_diferencia  = date("Y") - $anio;
+		$mes_diferencia = date("m") - $mes;
+		$dia_diferencia   = date("d") - $dia;
+		if ($dia_diferencia < 0 || $mes_diferencia < 0)
+		$anio_diferencia--;
+		return $anio_diferencia;
+	}
+
+	function no_cache()
+	{
+		header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+		header("Cache-Control: post-check=0, pre-check=0", false);
+		header("Pragma: no-cache");
+	}
+
+
+
+	
+}
+?>

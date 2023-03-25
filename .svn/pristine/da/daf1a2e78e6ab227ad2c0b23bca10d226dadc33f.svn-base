@@ -1,0 +1,96 @@
+<?php 
+	$ruta = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('ruta_base_documentos');
+	$url  = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos');
+	$cvar = sprintf('/docum_personal/%s/cvar.pdf',$datos['nro_documento']); 
+	$dni  = sprintf('/docum_personal/%s/dni.pdf' ,$datos['nro_documento']); 
+	$cbu  = sprintf('/docum_personal/%s/cbu.pdf' ,$datos['nro_documento']); 
+	$cuil = sprintf('/docum_personal/%s/cuil.pdf' ,$datos['nro_documento']); 
+?>
+<style type="text/css">
+	.contenedor_enlace{
+		background-color: #5e92c7;
+	    text-align: center;
+	    vertical-align: middle !important;
+	}
+	.contenedor_enlace a{
+		color: #FFFFFF;
+		cursor: pointer;
+		display: inline-block;
+		font-size: 1.4em;
+		font-weight: bold;
+		text-decoration: none;
+		text-shadow: 1px 1px 1px #222;
+		width: 100%;
+	}
+</style>
+<table>
+	<tbody>
+		<tr>
+			<td colspan="2">[ef id=nro_documento]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=cuil]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=apellido]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=nombres]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=fecha_nac]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=celular]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=sexo]</td>
+		</tr>
+		<tr>
+			<td>[ef id=archivo_dni]</td>
+			<?php if(file_exists($ruta . $dni)) : ?>
+				<td class="contenedor_enlace"><a href="<?php echo $url . $dni; ?>" target="_BLANK">Ver DNI</a></td>
+			<?php else : ?>
+				<td> -- No se ha cargado el DNI -- </td>
+			<?php endif; ?>
+		</tr>
+		<tr>
+			<td>[ef id=archivo_cbu]</td>
+			<?php if(file_exists($ruta . $cbu)) : ?>
+				<td class="contenedor_enlace"><a href="<?php echo $url . $cbu ?>" target="_BLANK">Ver CBU</a></td>
+			<?php else : ?>
+				<td> -- No se ha cargado el CBU -- </td>
+			<?php endif; ?>
+		</tr>
+		<tr>
+			<td>[ef id=archivo_cuil]</td>
+			<?php if(file_exists($ruta . $cuil)) : ?>
+				<td class="contenedor_enlace"><a href="<?php echo $url . $cuil; ?>" target="_BLANK">Ver CUIL</a></td>
+			<?php else : ?>
+				<td> -- No se ha cargado el CUIL -- </td>
+			<?php endif; ?>
+		</tr>
+		<tr>
+			<td>[ef id=archivo_cvar]</td>
+			<?php if(file_exists($ruta . $cvar)) : ?>
+				<td class="contenedor_enlace"><a href="<?php echo $url . $cvar ?>" target="_BLANK">Ver CVAR</a></td>
+			<?php else : ?>
+				<td> -- No se ha cargado el CVAR -- </td>
+			<?php endif; ?>
+		</tr>
+
+		<tr>
+			<td colspan="2">[ef id=mail]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=id_disciplina]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=id_nivel_academico]</td>
+		</tr>
+		<tr>
+			<td colspan="2">[ef id=id_localidad]</td>
+		</tr>
+	</tbody>
+</table>
+<p>&nbsp;</p>

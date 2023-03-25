@@ -1,0 +1,104 @@
+<?php
+class ci_integrantes extends sap_ci
+{
+	protected $s__filtro;
+	//-----------------------------------------------------------------------------------
+	//---- Configuraciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf()
+	{
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Eventos ----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function evt__guardar()
+	{
+		$this->get_datos()->sincronizar();
+		$this->get_datos()->resetear();
+		$this->set_pantalla('pant_seleccion');
+	}
+
+	function evt__cancelar()
+	{
+		$this->get_datos()->resetear();
+		$this->set_pantalla('pant_seleccion');
+	}
+
+
+	//-----------------------------------------------------------------------------------
+	//---- filtro_integrantes -----------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__filtro_integrantes(sap_ei_formulario $form)
+	{
+		if(isset($this->s__filtro)){
+			$form->set_datos($this->s__filtro);
+		}
+	}
+
+	function evt__filtro_integrantes__filtrar($datos)
+	{
+		$this->s__filtro = $datos;
+	}
+
+	function evt__filtro_integrantes__cancelar()
+	{
+		unset($this->s__filtro);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_proyectos -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_proyectos(sap_ei_cuadro $cuadro)
+	{
+		$filtro = (isset($this->s__filtro)) ? $this->s__filtro : array();
+		$cuadro->set_datos(toba::consulta_php('co_proyectos')->get_proyectos($filtro));
+
+	}
+
+	function evt__cu_proyectos__seleccion($seleccion)
+	{
+		$this->get_datos()->cargar($seleccion);
+		$this->set_pantalla('pant_edicion');
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- ml_integrantes ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__ml_integrantes(sap_ei_formulario_ml $form_ml)
+	{
+		$proyecto = $datos = $this->get_datos('proyectos')->get();
+		$titulo = sprintf('Integrantes del proyecto: %s (desde el %s al %s',$proyecto['codigo'], date('d-m-Y',strtotime($proyecto['fecha_desde'])), date('d-m-Y',strtotime($proyecto['fecha_hasta'])));
+		$form_ml->set_titulo($titulo);
+		$datos = $this->get_datos('proyecto_integrante')->get_filas();
+		if($datos){
+			$form_ml->set_datos($datos);
+		}
+	}
+
+	function evt__ml_integrantes__modificacion($datos)
+	{
+		$this->get_datos('proyecto_integrante')->procesar_filas($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Auxiliares -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function get_datos($tabla = NULL)
+	{
+		return ($tabla) ? $this->dep('datos')->tabla($tabla) : $this->dep('datos');
+	}
+
+	function get_ayn($nro_documento)
+	{
+		return toba::consulta_php('co_personas')->get_ayn($nro_documento);
+	}
+
+
+}
+?>

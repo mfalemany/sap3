@@ -1,0 +1,627 @@
+<?php
+class ci_junta_coordinadora extends sap_ci
+{
+	protected $s__filtro;
+	protected $ruta_documentos; //url
+	protected $path_documentos; //ruta local
+	protected $s__solicitud;
+	protected $s__inscripcion;
+	protected $id_convocatoria;
+	protected $criterios_evaluacion;
+
+	function ini(){
+		// La convocatoria es fija (se usa el ef para la cascada con el tipo de beca)
+		$this->id_convocatoria = toba::consulta_php('co_convocatoria_beca')->get_id_ultima_convocatoria(TRUE);
+
+		if (!empty($this->s__filtro['id_tipo_beca'])) {
+			
+			$filtro = [
+				'id_convocatoria' => $this->id_convocatoria,
+				'id_tipo_beca'    => $this->s__filtro['id_tipo_beca']
+			];
+
+			$this->criterios_evaluacion = toba::consulta_php('co_becas')->get_criterios_evaluacion($filtro);
+			$this->agregar_efs_dinamicos();
+		}
+	}
+	//-----------------------------------------------------------------------------------
+	//---- Configuraciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf()
+	{
+		if (!empty($this->s__solicitud)) {
+			$this->s__inscripcion = toba::consulta_php('co_becas')->get_resumen_inscripcion($this->s__solicitud);
+		}
+
+		//ubicacion del directorio donde se guardan los documentos
+		$this->ruta_documentos = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('ruta_base_documentos');
+		$this->path_documentos = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos');
+		
+	}
+
+	function evt__volver()
+	{
+		unset($this->s__solicitud);
+		unset($this->s__inscripcion);
+		
+		$this->get_datos()->resetear();
+		$this->set_pantalla('pant_seleccion');
+	}
+
+	function evt__guardar()
+	{	
+		// Genero un número para registrarlo como código de error
+		$time = substr(time(),4);
+
+		try {
+			// Seteo el usuario actual como autor del dictamen
+			$this->get_datos('be_dictamen')->set(['usuario_id' => toba::usuario()->get_id()]);
+
+			$this->get_datos()->sincronizar();	
+			$this->get_datos()->resetear();
+
+			unset($this->s__solicitud);
+			unset($this->s__inscripcion);
+
+			$this->set_pantalla('pant_seleccion');
+		} catch(toba_error_db $e){
+			$this->log('Código error: ' . $time . ' | ' . $e->get_mensaje_motor(),'JuntaCoordinadora');
+			toba::notificacion()->agregar('Ocurrió un error al intentar guardar. Por favor, comuniquese con personal de la SGCyT - UNNE para que lo ayude a resolverlo (Código error: ' . $time . ')', 'error');
+		} catch (Exception $e) {
+			$this->log('Código error: ' . $time . ' | ' . $e->getMessage(),'JuntaCoordinadora');
+			toba::notificacion()->agregar('Ocurrió un error al intentar guardar. Por favor, comuniquese con personal de la SGCyT - UNNE para que lo ayude a resolverlo (Código error: ' . $time . ')', 'error');
+		} 
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_postulaciones -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_postulaciones(sap_ei_cuadro $cuadro)
+	{
+		if (empty($this->s__filtro['id_convocatoria']) || empty($this->s__filtro['id_tipo_beca'])) {
+			$cuadro->set_eof_mensaje('Debe seleccionar la convocatoria y el tipo de beca para filtrar');
+			return;
+		}
+		if( ! toba::consulta_php('co_convocatoria_beca')->permite_evaluacion_junta($this->id_convocatoria)){
+			if($this->soy_admin()){
+				$cuadro->agregar_notificacion('Este listado está disponible solamente porque usted es administrador. La junta coordinadora no tiene posibilidad de evaluar');
+			}else{
+				$cuadro->agregar_notificacion('La convocatoria no se encuentra disponible para evaluación en este momento','warning');
+				return;
+			}
+		}
+
+		$filtro = ($this->s__filtro) ? $this->s__filtro : array();
+		
+		//Solo inscripciones cerradas y admitidas
+		$filtro['admisible']             = 'S';
+		$filtro['estado']                = 'C';
+		$filtro['id_convocatoria']       = $this->id_convocatoria;
+		$filtro['con_dictamen_comision'] = true;
+
+		$datos = toba::consulta_php('co_inscripcion_conv_beca')->get_inscripciones($filtro);
+		foreach($datos as $indice => $inscripcion){
+			
+			// Si no existe un puntaje inicial, se establece a cero
+			if (!$inscripcion['puntaje']) {
+				$inscripcion['puntaje'] == 0;
+			}
+
+			if($inscripcion['puntaje_junta'] !== null){
+				$datos[$indice]['puntaje_final'] = $inscripcion['puntaje'] + $inscripcion['puntaje_junta'];
+			}else{
+				$datos[$indice]['puntaje_final'] = $inscripcion['puntaje'] + $inscripcion['puntaje_comision'];
+			}
+		}
+		$cuadro->set_datos($datos);
+	}
+
+	function evt__cu_postulaciones__seleccion($seleccion)
+	{
+		//se setea como tipo de dictamen "Junta"
+		$seleccion['tipo_dictamen'] = 'J';
+		$this->s__solicitud         = $seleccion;
+
+		$this->get_datos()->cargar($seleccion);
+
+		$this->set_pantalla('pant_edicion');	
+		
+
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_filtro ------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_filtro(sap_ei_formulario $form)
+	{
+		
+		$this->dep('form_filtro')->ef('id_convocatoria')->set_estado($this->id_convocatoria);
+		$this->dep('form_filtro')->set_solo_lectura(array('id_convocatoria'));
+		$this->s__filtro['id_convocatoria'] = $this->id_convocatoria;
+		if(isset($this->s__filtro)){
+			$form->set_datos($this->s__filtro);
+		}
+	}
+
+	function evt__form_filtro__filtrar($datos)
+	{
+		$this->s__filtro = $datos;
+	}
+
+	function evt__form_filtro__cancelar()
+	{
+		unset($this->s__filtro);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_dictamen ----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_dictamen(sap_ei_formulario $form)
+	{
+		$datos = $this->get_datos('be_dictamen')->get();
+		if ($datos) {
+			
+			// Desgloso los valores para asignarlos a los EFs
+			$desglose_puntajes = json_decode($datos['desglose_puntajes'], true);
+			foreach ($desglose_puntajes as $puntaje_asignado) {
+				$datos[$puntaje_asignado['id']] = $puntaje_asignado['valor'];
+			}
+
+			$form->set_datos($datos);
+		} else {
+			$this->get_datos('be_dictamen')->set($this->s__solicitud);
+		
+			$dictamen_comision = toba::consulta_php('co_comision_asesora')->get_dictamen($this->s__solicitud);
+			if (!$dictamen_comision) return;
+
+			$desglose_puntajes = json_decode($dictamen_comision['desglose_puntajes'], true);
+			
+			// Agrupo el desglose, en puntajes por criterio (no me interesan los valores intermedios, solo el puntaje de cada criterio)
+			$puntajes_por_criterio = [];
+			foreach ($desglose_puntajes as $puntaje) {
+				$partes      = explode('-', $puntaje['id']);
+				$id_criterio = $partes[0];
+				
+				if (isset($puntajes_por_criterio[$id_criterio])) {
+					$puntajes_por_criterio[$id_criterio] += $puntaje['valor'];
+				} else {
+					$puntajes_por_criterio[$id_criterio] = $puntaje['valor'];
+				}
+			}
+
+			// Puntajes máximos que puede alcanzar un criterio determinado
+			$maximos_por_criterio = array_column($this->criterios_evaluacion, 'puntaje_maximo', 'id_criterio_evaluacion');
+			
+			foreach ($puntajes_por_criterio as $id_criterio => $puntaje) {
+				$puntaje_a_asignar = min($puntaje, $maximos_por_criterio[$id_criterio]);
+				// Tomo el valor con decimales (2)
+				$puntaje_a_asignar = round(floatval($puntaje_a_asignar),2);
+
+				$form->ef($id_criterio)->set_estado($puntaje_a_asignar);
+			}
+		}
+	}
+
+	function evt__form_dictamen__modificacion($datos)
+	{
+		$puntaje_asignado  = 0;
+		$desglose_puntajes = []; 
+		foreach($this->criterios_evaluacion as $criterio) {
+			// Para facilitar la lectura
+			$id_criterio = $criterio['id_criterio_evaluacion'];
+
+			if (isset($datos[$id_criterio])) {
+				$puntaje_asignado += $datos[$id_criterio];
+			}
+			// Guardo el desglose de los puntajes asignados
+			$desglose_puntajes[] = ['id' => $id_criterio, 'valor' => $datos[$id_criterio]];
+
+			// Y elimino el índice (ya no me sirve)
+			unset($datos[$id_criterio]);
+		}
+
+		$datos['puntaje_asignado']  = $puntaje_asignado;
+		$datos['desglose_puntajes'] = json_encode($desglose_puntajes);
+
+		$this->get_datos('be_dictamen')->set($datos);
+	}
+
+
+	function conf__pant_edicion(toba_ei_pantalla $pantalla)
+	{
+		if(!$this->s__solicitud){
+			throw new toba_error('No se ha seleccionado una solicitud para evaluar');
+		}
+		//busco todos los detalles de la postulaci?
+		$detalles = toba::consulta_php('co_inscripcion_conv_beca')->get_detalles_comprobante($this->s__solicitud);
+		//si el tipo de beca contempla el puntaje acad?ico, lo muestro al evaluador
+		$puntaje = ($detalles['beca']['suma_puntaje_academico'] == 'S') ? $detalles['postulante']['puntaje'] : "";
+		/* EL TEMPLATE COMPLETO SE ARMA EN FORMA ESCALONADA: EN EL NIVEL MAS BAJO, SE GENERA EL TEMPLATE CON LOS CARGOS DEL DIRECTOR (CO-DIRECTOR Y/O SUB-DIRECTO). ESE MINI-TEMPLATE SE EMBEBE DENTRO DEL TEMPLATE DE DIRECTOR, Y LUEGO, AMBOS DENTRO DEL TEMPLATE COMPLETO */
+
+		//ruta al plan de trabajo
+		$plan = $this->path_documentos.'/becas/doc_por_convocatoria/'.$detalles['beca']['id_convocatoria']."/".$detalles['beca']['id_tipo_beca']."/".$detalles['postulante']['nro_documento']."/Plan de Trabajo.pdf";
+		//la variable datos contendrá todos los valores que irá al template
+		$datos = array(
+			'titulo_plan_beca'   => $detalles['beca']['titulo_plan_beca'],
+			'id_proyecto'        => $detalles['proyecto']['id'],
+			'proyecto_nombre'    => $detalles['proyecto']['proyecto'],
+			'nombre_postulante'  => $detalles['postulante']['apellido'].", ".$detalles['postulante']['nombres'],
+			'cuil'               => $detalles['postulante']['cuil'],
+			'carrera'            => $detalles['postulante']['carrera'],
+			'tipo_beca'          => ucwords(strtolower($detalles['beca']['tipo_beca'])),
+			'nro_carpeta'        => $detalles['beca']['nro_carpeta'],
+			'area_conocimiento'  => ucwords(strtolower($detalles['beca']['area_conocimiento'])),
+			'enlace_plan_trab'   => urldecode($plan),
+			'puntaje_inicial'    => $puntaje,
+			'puntaje_final'		 => $detalles['postulante']['puntaje_comision'],
+			'tipo_dictamen'      => 'Junta Coordinadora'
+		);
+
+		if (!empty($detalles['postulante']['justif_subdirector'])) {
+			$datos['justificacion_subdirector'] = $detalles['postulante']['justif_subdirector'];
+		}
+
+		$datos['denominacion_grupo'] = ($detalles['beca']['denominacion_grupo']) ? $detalles['beca']['denominacion_grupo'] : 'No incluído en un grupo de investigación';
+
+		//Obtengo los detalles del director de esta solicitud y genero el template con sus datos
+		$director = toba::consulta_php('co_inscripcion_conv_beca')->get_detalles_director($this->s__solicitud);
+		$datos['direccion'] = $this->armar_template_direccion($director,'Director');
+		
+		//lo mismo para el co-director y el sub-director (si existen)
+		if(isset($detalles['codirector'])){
+			$director = toba::consulta_php('co_inscripcion_conv_beca')->get_detalles_director($this->s__solicitud,'codir');
+			if (!empty($detalles['postulante']['justif_codirector'])) {
+				$director['justificacion_codirector'] = $detalles['postulante']['justif_codirector'];
+			}
+
+			$datos['direccion'] .= $this->armar_template_direccion($director,'Co-Director');
+		}
+		
+		if(isset($detalles['subdirector'])){
+			$director = toba::consulta_php('co_inscripcion_conv_beca')->get_detalles_director($this->s__solicitud,'subdir');
+			if (!empty($detalles['postulante']['justif_subdirector'])) {
+
+				$director['justificacion_subdirector'] = $detalles['postulante']['justif_subdirector'];
+			}
+			$datos['direccion'] .= $this->armar_template_direccion($director,'Sub-Director');
+		}
+		//genero los parametros necesarios para enviarselos a la operación que generará el PDF del proyecto
+		$params = array('reporte'=>'reporte_proyecto','ver_completo'=>0,'id_proyecto'=>$detalles['proyecto']['id']);
+		//Obtengo un enlace a una operación que genera el PDF del proyecto. Es una operación independiente.
+		$datos['enlace_pdf_proyecto'] = toba::vinculador()->get_url(NULL,'3763', $params);
+
+		
+		// Armo el template de evaluación
+		$dictamen_comision    = toba::consulta_php('co_comision_asesora')->get_dictamen($this->s__solicitud);
+		$desglose_puntajes    = json_decode($dictamen_comision['desglose_puntajes'], true);
+		$criterios_evaluacion = toba::consulta_php('co_becas')->get_subcriterios_evaluacion($this->s__solicitud['id_convocatoria'], $this->s__solicitud['id_tipo_beca']);
+		
+		// Ordeno los criterios, a conveniencia para mostrar
+		$criterios = [];
+		foreach ($criterios_evaluacion as $criterio) {
+			$total_criterio          = 0; 
+			$criterio_descripcion    = $criterio['criterio_evaluacion'];
+			$subcriterio_descripcion = $criterio['descripcion']; 
+			
+			// Este foreach calcula el total de puntajes para este criterio que estoy iterando. Sirve para mostrar subtotales
+			foreach ($desglose_puntajes as $puntaje) {
+				$partes      = explode('-', $puntaje['id']);
+				$id_criterio = $partes[0]; 
+				if ($criterio['id_criterio_evaluacion'] == $id_criterio) {
+					$total_criterio += $puntaje['valor'];
+				}
+
+			}
+			$criterio['total_criterio'] = intval(min($total_criterio, $criterio['puntaje_maximo']));
+
+			$criterios[$criterio_descripcion][$subcriterio_descripcion] = $criterio; 
+		} 
+
+		$datos_template = [
+			'dictamen_comision' => $dictamen_comision,
+			'desglose_puntajes' => array_column($desglose_puntajes, 'valor', 'id'),
+			'criterios'         => $criterios,
+		];
+
+
+		$ruta_template     = __DIR__.'/../comision_asesora/evaluacion/templates/template_eval_junta.php';
+		
+		$datos['formularios_evaluacion'] = $this->armar_template($ruta_template, $datos_template);
+		
+		//Armo el template completo
+		$template_completo = file_get_contents(__DIR__.'/../comision_asesora/evaluacion/templates/template_evaluacion.php');
+		foreach ($datos as $clave => $valor) {
+			$template_completo = str_replace("{{".$clave."}}",$valor,$template_completo);
+		}
+
+		$pantalla->set_template($template_completo);
+	}
+
+	function armar_template_direccion($director,$rol)
+	{
+		//Armo el template de los cargos
+		$cargos = toba::consulta_php('co_personas')->get_cargos_persona($director['nro_documento']);
+		$lista_cargos = $this->armar_template_cargos($cargos);
+		
+		//Armo el template de director
+		$cat_incentivos = array(1=>'Categoría I',2=>'Categoría II',3=>'Categoría III',4=>'Categoría IV',5=>'Categoría V');
+		
+		$datos_template_director = array(
+			'rol'                       => $rol,
+			'ayn'                       => $director['apellido'].", ".$director['nombres'],
+			'dni'                       => $director['nro_documento'],
+			'categoria_inc'             => (isset($cat_incentivos[$director['catinc']]) ) ? $cat_incentivos[$director['catinc']] :'No categorizado',
+			'categoria_con'             => $director['catconicet'],
+			'enlace_cvar'               => $this->path_documentos."/docum_personal/".$director['nro_documento']."/cvar.pdf",
+			'cargos'                    => $lista_cargos,
+			'id_convocatoria'           => $this->s__solicitud['id_convocatoria'],
+			'url_base'                  => toba::consulta_php('helper_archivos')->url_base(),
+			'justificacion_codirector'  => !empty($director['justificacion_codirector']) ? $director['justificacion_codirector'] : null,
+			'justificacion_subdirector' => !empty($director['justificacion_subdirector']) ? $director['justificacion_subdirector'] : null,
+		);
+		
+		
+		$solicitud_categoria_transitoria = toba::consulta_php('co_becas')->get_solicitud_transitoria_incentivos_becas($director['nro_documento'], $this->s__solicitud['id_convocatoria']);
+		
+		if ($solicitud_categoria_transitoria) {
+			$requisitos_categoria_solicitada = toba::consulta_php('co_becas')->get_requisitos_categoria_incentivos_transitoria_becas($this->s__solicitud['id_convocatoria'], $solicitud_categoria_transitoria['categoria']);
+			$datos_template_director['cat_inc_trans_desc'] = $cat_incentivos[$solicitud_categoria_transitoria['categoria']];
+			$datos_template_director['cat_inc_requisitos'] = $requisitos_categoria_solicitada;
+		}
+		$datos_template_director['categoria_transitoria_resultado'] = array_keys(toba::consulta_php('co_becas')->get_categoria_transitoria_concedida_en_dictamen($director['nro_documento'], $this->s__solicitud['id_convocatoria']));
+		
+		$template_director = $this->armar_template(__DIR__ . '/../comision_asesora/evaluacion/templates/template_director.php', $datos_template_director);
+		return $template_director;
+	}
+
+	function armar_template_cargos($cargos)
+	{
+		$lista_cargos = "";
+		//por cada cargo, se agrega una nueva linea al template
+		foreach ($cargos as $cargo){
+			//se obtiene el template vac?
+			$template_cargos = file_get_contents(__DIR__.'/../comision_asesora/evaluacion/templates/template_cargo.php');
+			$cargo['clase_css'] = ($cargo['fecha_hasta'] >= date('Y-m-d')) ? 'cargo_vigente' : ''; 
+			$cargo['fecha_desde'] = (new DateTime($cargo['fecha_desde']))->format('d-m-Y');
+			$cargo['fecha_hasta'] = (new DateTime($cargo['fecha_hasta']))->format('d-m-Y');
+
+			//$cargo['fecha_desde'] = $cargo['fecha_desde']->format('d-m-Y');
+			foreach ($cargo as $clave => $valor) {
+				$template_cargos = str_replace("{{".$clave."}}",$valor,$template_cargos);  	
+			}
+			//agrego el cargo generado a la lista
+			$lista_cargos .= $template_cargos;
+		}
+		return $lista_cargos;
+	}
+
+	/** =============================================================================
+	 *              CONFIGURACION DE LOS CUADROS DE ANTECEDENTES
+	 * ============================================================================= */
+	/* =============== ANTECEDENTES DE DOCENCIA =================*/
+	function conf__cu_actividades_docentes(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_activ_docentes($this->s__solicitud));
+	}
+
+	function servicio__antec_docencia_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_activ_docentes','id_antecedente = '.$params['id_antecedente']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/activ_docente/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ESTUDIOS AFINES =================*/
+	function conf__cu_estudios_afines(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_estudios_afines($this->s__solicitud));
+	}
+	function servicio__antec_estudio_afin_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_estudios_afines','id_estudio_afin = '.$params['id_estudio_afin']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/estudios_afines/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ANTECEDENTES DE BECAS OBTENIDAS =================*/
+	function conf__cu_becas_obtenidas(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_becas_obtenidas($this->s__solicitud));
+	}
+
+	function servicio__antec_becas_obtenidas_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_becas_obtenidas','id_beca_obtenida = '.$params['id_beca_obtenida']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/becas_obtenidas/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ANTECEDENTES DE TRABAJOS PUBLICADOS =================*/
+	function conf__cu_trabajos_publicados(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_trabajos_publicados($this->s__solicitud));
+	}
+
+	function servicio__antec_trabajos_publicados_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_trabajos_publicados','id_trabajo_publicado = '.$params['id_trabajo_publicado']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/trabajos_publicados/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ANTECEDENTES DE PRESENTACI? EN REUNIONES =================*/
+	function conf__cu_present_reuniones(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_present_reuniones($this->s__solicitud));
+	}
+
+	function servicio__antec_present_reuniones_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_present_reuniones','id_present_reunion = '.$params['id_present_reunion']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/presentacion_reuniones/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ANTECEDENTES DE CONOCIMIENTO IDIOMAS =================*/
+	function conf__cu_idiomas(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_conocimiento_idiomas($this->s__solicitud));
+	}
+
+	function servicio__antec_conocimiento_idiomas_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_conoc_idiomas','id_conocimiento_idioma = '.$params['id_conocimiento_idioma']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/conocimiento_idiomas/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ANTECEDENTES DE OTRAS ACTIVIDADES =================*/
+	function conf__cu_otras_actividades(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_otras_actividades($this->s__solicitud));
+	}
+
+	function servicio__antec_otras_actividades_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_otras_actividades','id_otra_actividad = '.$params['id_otra_actividad']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/otras_actividades/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ANTECEDENTES DE PARTICIPACION EN DICTADO DE CURSOS =================*/
+	function conf__cu_part_dict_cursos(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_particip_dict_cursos($this->s__solicitud));
+	}
+
+	function servicio__antec_particip_dict_cursos_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_particip_dict_cursos','id_particip_cursos = '.$params['id_particip_cursos']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/part_dict_cursos/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	/* =============== ANTECEDENTES DE PARTICIPACION EN DICTADO DE CURSOS =================*/
+	function conf__cu_cursos_perfeccionamiento(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_inscripcion_conv_beca')->get_antec_cursos_perfeccionamiento($this->s__solicitud));
+	}
+
+	function servicio__antec_cursos_perfeccionamiento_pdf()
+	{
+		$params = toba::memoria()->get_parametros();
+		$campos = toba::consulta_php('co_inscripcion_conv_beca')->get_campos(array('doc_probatoria','nro_documento'),'be_antec_cursos_perfec_aprob','id_curso_perfec_aprob = '.$params['id_curso_perfec_aprob']);
+		
+		$ruta = $this->ruta_documentos."/doc_probatoria/".$campos['nro_documento']."/cursos_perfec_aprob/".$campos['doc_probatoria'];
+
+		$this->mostrar_pdf($ruta);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Auxiliares -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function get_datos($tabla = NULL)
+	{
+		return ($tabla) ? $this->dep('datos')->tabla($tabla) : $this->dep('datos');
+	}
+
+	function mostrar_pdf($archivo)
+	{	
+		header("Location: ".utf8_encode($archivo));
+	}
+
+	/**
+	 * Esta funcion agrega un EF por cada criterio de evaluación. A diferencia de la comisión asesora, la Junta Coordinadora
+	 * solo modifica los criterios de evaluación (no los subcriterios). 
+	 * Además de agregar los efs, los llena con los valores que asignó la comisión
+	 * @return void
+	 */
+	private function agregar_efs_dinamicos()
+	{
+		foreach ($this->criterios_evaluacion as $criterio) {
+			// Para facilitar la lectura
+			$id_criterio = $criterio['id_criterio_evaluacion'];
+
+			// Agrego el EF para ese criterio
+			$this->dep('form_dictamen')->agregar_ef($id_criterio, 'ef_editable_numero', $criterio['criterio_evaluacion'], $id_criterio, ['obligatorio' => 1, 'estilo' => 'ef-numero puntaje-antecedente', 'edit_tamano' => 3, 'edit_maximo' => 3, 'edit_rango' => '[0..'.$criterio['puntaje_maximo']."]" ]);
+		}
+	}
+
+	function extender_objeto_js()
+	{
+		echo "
+			$(document).ready(function(){
+				$('body,html').animate({scrollTop : 0}, 500);
+				
+				return;
+			})
+
+			if ( typeof {$this->objeto_js}.dep('form_dictamen') !== 'undefined') {
+				actualizarPuntajeTotal();
+
+				puntajes = document.querySelectorAll('.puntaje-antecedente');
+				Array.from(puntajes).forEach(function(puntaje){
+					puntaje.addEventListener('change', function(evento){
+						actualizarPuntajeTotal();
+					});
+				});
+
+				// Función que actualiza el puntaje total cuando se actualizan los totales parciales
+				function actualizarPuntajeTotal(){
+					 puntaje_dictamen = 0;
+					 Array.from(document.querySelectorAll('.puntaje-antecedente')).forEach(function(puntaje){
+					 	puntaje_a_sumar = puntaje.value ? puntaje.value : 0;
+					 	console.log('sumando ' + puntaje_a_sumar);
+					 	puntaje_dictamen = parseFloat(puntaje_dictamen) + parseFloat(puntaje_a_sumar);
+					 });
+
+					 puntaje_inicial = parseFloat(document.getElementById('puntaje_inicial_valor').innerHTML);
+					 console.log('Puntaje_inicial', puntaje_inicial);
+					 console.log('Puntaje_dictamen', puntaje_dictamen);
+					 document.getElementById('puntaje_final_valor').innerHTML = parseFloat(puntaje_inicial + puntaje_dictamen).toFixed(3);
+					
+				}
+			}
+		";
+	}
+
+}
+?>

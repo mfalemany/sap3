@@ -1,0 +1,72 @@
+[
+	{
+	"tabla" : "proyectos",
+	"nombre_mostrar":"Proyectos",
+	"min_registros":false,
+	"max_registros":false,
+	"aplicable_a":["0","D"],
+	"campos" : [
+				{"nombre":"objetivo_general","pantalla":"Proyecto","leyenda":"Objetivo General"},
+				{"nombre":"resumen","pantalla":"Proyecto","leyenda":"Resumen del Proyecto"},
+				{"nombre":"descripcion_metodologica","pantalla":"Proyecto","leyenda":"Descripcion Metodologica"},
+				{"nombre":"estado_conocimiento","pantalla":"Proyecto","leyenda":"Estado del Conocimiento"},
+				{"nombre":"trabajos_previos","pantalla":"Proyecto","leyenda":"Trabajos Previos"},
+				{"nombre":"bibliografia","pantalla":"Proyecto","leyenda":"Bibliografia"},
+				{"nombre":"justif_codirector","pantalla":"Integrantes","leyenda":"Justificacion Codirector","metodo_condicion":"existe_codirector"},
+				{"nombre":"justif_subdirector","pantalla":"Integrantes","leyenda":"Justificacion Subdirector","metodo_condicion":"existe_subdirector"}
+				]
+	},
+	{
+	"tabla" : "proyectos_pi",
+	"nombre_mostrar":"Detalles del PI",
+	"min_registros":false,
+	"max_registros":false,
+	"aplicable_a":["0"],
+	"campos" : [
+				{"nombre":"tipo_investigacion","pantalla":"Detalles","leyenda":"Tipo de Investigacion"},
+				{"nombre":"efectos_sistema_cient","pantalla":"Detalles","leyenda":"Efectos en el Sistema Cientifico"},
+				{"nombre":"efectos_actividad_univ","pantalla":"Detalles","leyenda":"Efectos en Actividad Universitaria"},
+				{"nombre":"aplicacion_resultados","pantalla":"Detalles","leyenda":"Aplicacion de Resultados"},
+				{"nombre":"resultados_esperados","pantalla":"Detalles","leyenda":"Resultados Esperados"}
+				]
+	},
+	{
+	"tabla" : "proyectos_pdts",
+	"nombre_mostrar":"Detalles del PDTS",
+	"min_registros":false,
+	"max_registros":false,
+	"aplicable_a":["D"],
+	"campos" : [
+				{"nombre":"producto","pantalla":"Detalles","leyenda":"Producto"},
+				{"nombre":"originalidad","pantalla":"Detalles","leyenda":"Originalidad"},
+				{"nombre":"relevancia","pantalla":"Detalles","leyenda":"Relevancia"},
+				{"nombre":"pertinencia","pantalla":"Detalles","leyenda":"Pertinencia"},
+				{"nombre":"demanda","pantalla":"Detalles","leyenda":"Demanda"}
+				]
+	},
+	{
+	"tabla" : "proy_pdts_institucion",
+	"nombre_mostrar":"Instituciones adoptantes y/o demandantes",
+	"min_registros":1,
+	"max_registros":false,
+	"aplicable_a":["D"],
+	"campos" : []
+	},
+	{
+	"tabla" : "proy_presupuesto",
+	"nombre_mostrar":"Necesidades Presupuestarias",
+	"min_registros":1,
+	"max_registros":false,
+	"aplicable_a":["0","D"],
+	"campos" : []
+	},
+	{
+	"tabla" : "proyecto_obj_especifico",
+	"nombre_mostrar":"Plan de Tareas",
+	"min_registros":1,
+	"max_registros":false,
+	"aplicable_a":["0","D"],
+	"campos" : []
+	}
+	
+]

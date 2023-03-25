@@ -1,0 +1,197 @@
+<?php
+class ci_cambiar_clave extends sap_ci
+{
+	private $s__datos;
+
+	function conf()
+	{
+		$usuario = toba::usuario()->get_id();
+		if(is_numeric($usuario)){
+			$this->get_datos()->resetear();
+			$this->get_datos()->cargar(array('nro_documento'=>$usuario));
+			if( ! toba::consulta_php('co_personas')->es_docente($usuario)){
+				$this->pantalla()->eliminar_dep('form_persona_aux');
+				$this->pantalla()->eliminar_dep('cu_articulos');
+			}
+		}
+	}
+	//-----------------------------------------------------------------------------------
+	//---- form_cambio_clave ------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_cambio_clave(sap_ei_formulario $form)
+	{
+		$datos = toba::instancia()->get_info_usuario(toba::usuario()->get_id());
+		$mail = $datos['email'];
+		if($mail){
+			$this->s__datos['mail'] = $mail;	
+			$form->set_datos($this->s__datos);
+		}
+	}
+
+	function evt__form_cambio_clave__guardar($datos)
+	{
+		
+		//le asigno la clave y el permiso al proyecto
+		if( ! empty($datos['clave_nueva'])){
+			if( ! ($datos['clave_nueva'] == $datos['clave_nueva_repetir'])){
+				toba::notificacion()->agregar('Las claves ingresadas no coinciden','error');
+				return;
+			}
+			if( strlen($datos['clave_nueva']) <= 5 ){
+				toba::notificacion()->agregar('Debe ingresar una clave de al menos seis caracteres','error');
+				return;
+			}
+			toba::usuario()->set_clave_usuario($datos['clave_nueva'], toba::usuario()->get_id());
+		}
+
+		if(empty($datos['mail'])){
+			toba::notificacion()->error('Debe ingresar una dirección de correo','','Dirección de correo no válida');
+			return;
+		}
+		$this->actualizar_mail(toba::usuario()->get_id(),$datos['mail']);
+	}
+
+	function actualizar_mail($usuario,$mail)
+	{
+
+		if(empty($usuario) || empty($mail)){
+			return false;
+		}
+		$sql = "UPDATE apex_usuario SET email = ".quote($mail)." WHERE usuario = ".quote($usuario);
+		
+		//falta validar la respuesta de ejecucion de esta consulta!!!
+		toba::instancia()->get_db()->ejecutar($sql);
+	}
+
+	function conf__form_persona(sap_ei_formulario $form)
+	{		
+		$datos = $this->get_datos('sap_personas')->get();
+		if($datos){
+			$form->set_datos($datos);	
+		}else{
+			$form->set_solo_lectura();
+			$form->set_efs_obligatorios($form->get_nombres_ef(),FALSE);
+		}
+		$form->ef('mail')->set_estado($this->s__datos['mail']);
+		$form->set_solo_lectura(array('mail','nro_documento'));
+		//$form->desactivar_efs(array('archivo_cvar'));
+	}
+
+	function evt__form_persona__modificacion($datos){
+		if(!$datos['nro_documento']){
+			return;
+		}
+
+		if(isset($datos['archivo_cvar']) && $datos['archivo_cvar']){
+			toba::consulta_php('helper_archivos')->subir_archivo($datos['archivo_cvar'],'docum_personal/'.$datos['nro_documento'],'cvar.pdf',array('pdf'));
+			$datos['archivo_cvar'] = 'cvar.pdf';
+			
+		}else{
+			unset($datos['archivo_cvar']);
+		}
+		$this->get_datos('sap_personas')->set($datos);
+		$this->get_datos('sap_personas')->sincronizar();
+	}
+
+	function extender_objeto_js()
+	{
+		echo "
+		id = {$this->dep('form_cambio_clave')->objeto_js}.ef('mail')._id_form;
+		
+		//cada vez que se levanta la tecla, se actualiza el esclavo
+		$('#'+id).on('keyup',sincronizar);
+		
+		function sincronizar(){
+			//obtengo el ID del mail de la persona
+			id_persona = {$this->dep('form_persona')->objeto_js}.ef('mail')._id_form;
+			//actualizo sus datos
+			$('#'+id_persona).prop('value',$('#'+id).prop('value'));
+		}";
+	}
+
+
+
+	//-----------------------------------------------------------------------------------
+	//---- form_persona_aux -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_persona_aux(sap_ei_formulario $form)
+	{
+		$datos = $this->get_datos('sap_personas_aux')->get();
+		if($datos){
+			$form->set_datos($datos);
+		}
+	}
+
+	function evt__form_persona_aux__guardar($datos)
+	{
+		$this->get_datos('sap_personas_aux')->set($datos);
+		$this->get_datos()->sincronizar();
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_publicaciones -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_articulos(sap_ei_cuadro $cuadro)
+	{
+		$datos = $this->get_datos('sap_cvar_articulo')->get_filas();
+		if(count($datos)){
+			$cuadro->set_datos($datos);
+		}
+		
+	}
+
+	function evt__cu_articulos__seleccion($seleccion)
+	{
+		$datos = $this->get_datos('sap_personas')->get();
+		if( ! (isset($datos['cuil']) && $datos['cuil']) ){
+			return;
+		}
+		$cuil = str_replace(array('-','/',' ','.'),'',$datos['cuil']);
+		
+		try {
+			$cv = new Cvar_getter($cuil);
+			$articulos = $cv->datos['produccion']['publicaciones']['articulos'];
+			if(! isset($articulos['articulo'])) return;
+			$articulos = $articulos['articulo'];
+
+			$existentes = $this->get_datos('sap_cvar_articulo')->get_filas();
+			$existentes = array_column($existentes, 'titulo');
+			foreach ($articulos as $articulo) {
+				if(in_array(utf8_decode($articulo['titulo']), $existentes)) continue;
+
+					$nuevo = array(
+						'nro_documento'          => toba::usuario()->get_id(),
+						'issn'                   => isset($articulo['revista']['issn']) ? $articulo['revista']['issn'] : NULL,
+						'revista'                => isset($articulo['revista']['nombre']) ? utf8_decode($articulo['revista']['nombre']) : 'No declarado',
+						'pais'                   => isset($articulo['revista']['pais']) ? utf8_decode($articulo['revista']['pais']): NULL,
+						'anio'                   => $articulo['revista']['anioPublica'],
+						'titulo'                 => utf8_decode($articulo['titulo']),
+						'referato'               => $articulo['referato'],
+						'doi'                    => isset($articulo['doi']) ? $articulo['doi'] : NULL,
+						'es_colab_internacional' => FALSE,
+						'id_universidad_augm'    => NULL,
+						'subarea_cvar'           => isset($articulo['areasDelConocimiento']['areasDelConocimiento']['area']) ? $articulo['areasDelConocimiento']['areasDelConocimiento']['area'] : NULL,
+						'subarea_sap'            => NULL
+					);
+
+				$this->get_datos('sap_cvar_articulo')->nueva_fila($nuevo);
+
+			}
+			$this->get_datos('sap_cvar_articulo')->sincronizar();
+			toba::notificacion()->info('Los datos cargaron correctamente!');
+		} catch (toba_error $e) {
+			toba::notificacion()->error('Ocurrió el siguiente error: ' . $e->get_mensaje());
+		}
+	}
+
+	function get_datos($tabla = NULL)
+	{
+		return ($tabla) ? $this->dep('datos')->tabla($tabla) : $this->dep('datos');
+	}
+
+
+}
+?>

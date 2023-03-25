@@ -1,0 +1,27 @@
+/*ALTER TABLE sap_convocatoria
+  ADD COLUMN limite_edicion date;
+
+ALTER TABLE sap_comunicacion
+  ADD COLUMN orden_poster character varying(15);
+
+ALTER TABLE sap_area_conocimiento
+  ADD COLUMN prefijo_orden_poster character varying(3);
+
+ALTER TABLE sap_autor
+  ADD COLUMN es_becario boolean;
+COMMENT ON COLUMN sap_autor.es_becario IS 'Columna que indica si el autor es el becario que publica la comunicacion, y por lo tanto debe ir primero en la lista del reporte.';
+*/
+CREATE TABLE public.sap_usuarios
+(
+   nro_documento character varying(15) NOT NULL, 
+   ayn character varying(100) NOT NULL, 
+   clave character varying(100) NOT NULL, 
+   mail character varying(100) NOT NULL, 
+   CONSTRAINT pk_usuarios PRIMARY KEY (nro_documento)
+) 
+WITH (
+  OIDS = FALSE
+)
+;
+ALTER TABLE public.sap_usuarios
+  OWNER TO sap;

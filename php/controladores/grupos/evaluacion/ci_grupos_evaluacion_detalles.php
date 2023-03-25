@@ -1,0 +1,283 @@
+<?php
+class ci_grupos_evaluacion_detalles extends sap_ci
+{
+	protected $s__seleccionado;
+	protected $s__convocatoria_ultimo_informe;
+
+	public function conf()
+	{
+		$datos = $this->get_datos('grupo')->get();
+		if (!$datos) {
+			throw new toba_error('No se ha seleccionado un grupo para evaluar');
+		}
+		$this->s__seleccionado = $datos;
+
+		if (!isset($this->s__convocatoria_ultimo_informe)) {
+			$planes_presentados                   = toba::consulta_php('co_grupos')->get_planes_trabajo($this->s__seleccionado['id_grupo']);
+			$this->s__convocatoria_ultimo_informe = max(array_column($planes_presentados, 'id_convocatoria'));
+		}
+
+	}
+	//-----------------------------------------------------------------------------------
+	//---- Configuraciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__pant_informacion_general(toba_ei_pantalla $pantalla)
+	{
+		$id_grupo                         = $this->s__seleccionado['id_grupo'];
+		$datos['grupo']                   = toba::consulta_php('co_grupos')->get_detalles_grupo($id_grupo);
+		$datos['lineas_investigacion']    = toba::consulta_php('co_grupos')->get_lineas_investigacion($id_grupo);
+
+		// Acomodo las palabras clave para mostrarlas en el templata
+		$palabras_clave                   = explode(',', $datos['grupo']['palabras_clave']);
+		$palabras_clave                   = array_map(function($palabra){ return trim(ucfirst($palabra)); }, $palabras_clave);
+		$palabras_clave                   = implode('    |    ', $palabras_clave);
+		$datos['grupo']['palabras_clave'] = $palabras_clave;
+		$datos['detalles_coordinador']    = toba::consulta_php('co_personas')->buscar_persona($datos['grupo']['nro_documento_coordinador']); 
+
+		// TODO: esto tiene que volar cuando no hayan mas categorías transitorias =================================================
+		$infoCatIncTransitoriaSolicitada  = toba::consulta_php('co_becas')->get_solicitud_transitoria_incentivos($datos['grupo']['nro_documento_coordinador'], 2);
+
+		if ($infoCatIncTransitoriaSolicitada) {
+			$datos['documentacion']        = toba::consulta_php('co_becas')->get_solicitud_transitoria_incentivos_documentacion($infoCatIncTransitoriaSolicitada['categoria'], $infoCatIncTransitoriaSolicitada['id_llamado']);
+			$datos['cat_trans_solicitada'] = $infoCatIncTransitoriaSolicitada;
+		}
+
+		/* ============================= HASTA ACÀ TIENE QUE VOLAR (sacar lo que está en el template) ========================== */
+
+		//URL del template
+		$tpl = __DIR__.'/templates/template_pant_informacion_general.php';
+		//Armo el template con los datos y lo asigno a la pantalla
+		$tpl = $this->armar_template($tpl,$datos);
+		$pantalla->set_template($tpl);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_planes_presentados --------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_planes_presentados(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$grupo              = $this->get_datos('grupo')->get();
+		$planes_presentados = toba::consulta_php('co_grupos')->get_planes_trabajo($grupo['id_grupo']);
+
+		if ($planes_presentados) {
+			$cuadro->set_datos($planes_presentados);
+		}
+
+		if (! $this->soy_admin()) {
+			$cuadro->eliminar_columnas(['evaluador']);
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_eval_grupo --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_eval_grupo(sap_ei_formulario $form)
+	{
+		$grupo = $this->get_datos('grupo')->get();
+
+		if($grupo){
+			$form->set_datos($grupo);
+		}
+
+		// Si el grupo no permite cambio de categoria, bloqueo ese campo en la evaluacion
+		if (!toba::consulta_php('co_grupos')->permite_cambio_categoria($grupo['id_grupo'])) {
+			$form->set_solo_lectura(['id_categoria']);
+			$form->ef('id_categoria')->set_obligatorio(false);
+			$form->agregar_notificacion('No es posible cambiar la categoría de este grupo.','info');
+		}
+
+		$evaluacion = $this->get_datos('grupo_informe_evaluacion')->get();
+		if (isset($evaluacion['estado']) && $evaluacion['estado'] == 'C') {
+			$form->set_solo_lectura();
+		}
+
+	}
+
+	function evt__form_eval_grupo__modificacion($datos)
+	{
+		$this->get_datos('grupo')->set($datos);
+	}
+
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_integrantes ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_integrantes(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_integrantes($this->s__seleccionado['id_grupo']));
+	}
+
+	public function conf_evt__cu_integrantes__ver_cvar(toba_evento_usuario $evento, $fila)
+	{
+		$params = explode('||', $evento->get_parametros());
+		if (toba::consulta_php('helper_archivos')->existe_documento_personal($params[0], 'cvar')) {
+			$evento->mostrar();
+		} else {
+			$evento->ocultar();
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_eval_plan_trabajo -------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_eval_plan_trabajo(sap_ei_formulario $form)
+	{
+		$evaluacion = $this->get_datos('grupo_informe_evaluacion')->get();
+		if($evaluacion){
+			$form->set_datos($evaluacion);
+		}
+
+		if (isset($evaluacion['estado']) && $evaluacion['estado'] == 'C') {
+			$form->set_solo_lectura();
+		}
+	}
+
+	function evt__form_eval_plan_trabajo__modificacion($datos)
+	{
+		//aquí se asigna el id_grupo e id_convocaotoria
+		$datos = array_merge($datos,$this->s__seleccionado, ['id_convocatoria' => $this->s__convocatoria_ultimo_informe]);
+		$datos['nro_documento_evaluador'] = toba::usuario()->get_id();
+		$this->get_datos('grupo_informe_evaluacion')->set($datos);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_proyectos -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_proyectos(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$datos = toba::consulta_php('co_grupos')->get_proyectos_grupo($this->s__seleccionado['id_grupo'], FALSE);
+		
+		// Agrego a cada proyecto el resultado de su ultimo informe
+		$datos = array_map(function($proyecto){
+			if (!empty($proyecto['id'])) {
+				$proyecto['resultado_ultimo_informe'] = toba::consulta_php('co_proyectos_informes')->get_resultado_ultimo_informe($proyecto['id']);
+			} else {
+				$proyecto['resultado_ultimo_informe'] = 'No aplica';
+			}
+			return $proyecto;
+		}, $datos);
+
+		$cuadro->set_datos($datos);
+	}
+
+	public function conf_evt__cu_proyectos__ver_proyecto(toba_evento_usuario $evento, $fila)
+	{
+		$params = $evento->get_parametros();
+		$params = explode('||', $params);
+		if (isset($params[0]) && is_numeric($params[0])) {
+			$evento->mostrar();
+		} else {
+			$evento->ocultar();
+		}
+	}
+
+	public function conf_evt__cu_proyectos__ver_ultimo_informe(toba_evento_usuario $evento, $fila)
+	{
+		$params        = $evento->get_parametros();
+		$params        = explode('||', $params);
+		$id_proyecto   = $params[0]; 
+
+		$tipos_proyecto = [
+			'0' => 'pi', 
+			'D' => 'pdts'
+		];
+
+		$tipo_proyecto = $tipos_proyecto[$params[1]];
+
+		if (isset($params[0]) && is_numeric($params[0])) {
+			$ultimo_informe = toba::consulta_php('co_proyectos_informes')->get_id_ultimo_informe_proyecto($tipo_proyecto, $id_proyecto);
+			if ($ultimo_informe) {
+				$evento->mostrar();
+			} else {
+				$evento->ocultar();
+			}
+		} else {
+			$evento->ocultar();
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_publicaciones -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	public function conf__cu_publicaciones(sap_ei_cuadro $cuadro)
+	{
+		$datos = toba::consulta_php('co_grupos')->get_actividad_publicacion($this->s__seleccionado['id_grupo']);
+
+		if (count($datos)) {
+			$publicaciones = array_map(function($publicacion){
+				if (!empty($publicacion['url_publicacion'])) {
+					$publicacion['url_publicacion'] = "<a href='{$publicacion['url_publicacion']}' target='_BLANK' title='Esta enlace es proporcionado por el coordinador del grupo'>Ver publicacion</a>";
+				}
+				return $publicacion;
+			}, $datos);
+			$cuadro->set_datos($publicaciones);
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_extension -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_extension(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_extension($this->s__seleccionado['id_grupo']));
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_transferencia -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_transferencia(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_transferencia($this->s__seleccionado['id_grupo']));
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_form_rrhh -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_form_rrhh(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_form_rrhh($this->s__seleccionado['id_grupo']));
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_becarios_proyectos_grupo --------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_becarios_proyectos_grupo(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_becarios_proyectos_grupo($this->s__seleccionado['id_grupo']));
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_reuniones -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_reuniones(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_evento($this->s__seleccionado['id_grupo']));
+	}
+
+
+	//-----------------------------------------------------------------------------------
+	//---- Auxiliares -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function get_datos($tabla = null) 
+	{
+		return ($tabla) ? $this->controlador()->get_datos($tabla) : $this->controlador()->get_datos();
+	}
+
+
+}
+?>

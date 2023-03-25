@@ -1,0 +1,205 @@
+<?php
+class ci_presentacion_informe extends sap_ci
+{
+	protected $informe_seleccion;
+	protected $plazo_presentacion_abierto;
+	//Contiene un array del tipo ('plazo'=>'tipo_informes_permitidos'). Ej: array('P'=>'T','E'=>'A'): para presentacion, todos. Para evaluacion, solo de avances 
+	private $tipos_informe_permitidos;
+
+	//-----------------------------------------------------------------------------------
+	//---- Configuraciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function conf(){
+		$this->plazo_presentacion_abierto = toba::consulta_php('co_becas_informes')->hay_plazo_abierto_informes('P');
+		
+		$plazos = toba::consulta_php('co_becas_informes')->get_plazos(TRUE);
+		if(count($plazos)){
+			foreach ($plazos as $plazo) {
+				$this->tipos_informe_permitidos[$plazo['tipo_plazo']][] = $plazo['tipo_informes'];
+			}
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- Eventos ----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function evt__volver()
+	{
+		$this->get_datos()->resetear();
+		$this->set_pantalla('pant_presentacion');
+	}
+	//-----------------------------------------------------------------------------------
+	//---- cu_postulaciones ------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_postulaciones(sap_ei_cuadro $cuadro)
+	{
+		$filtro = ( ! $this->soy_admin()) ? array('nro_documento' => toba::usuario()->get_id()) : array();
+		$cuadro->set_datos(toba::consulta_php('co_becas_informes')->get_becas_vigentes($filtro));
+	}
+
+	function evt__cu_postulaciones__ver($seleccion)
+	{
+		$this->get_datos()->cargar($seleccion);
+		$this->set_pantalla('pant_seleccion_informe');
+	}
+
+	function conf_evt__cu_postulaciones__ver(toba_evento_usuario $evento, $fila)
+	{
+
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_informes -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_informes(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$otorgada = $this->get_datos('becas_otorgadas')->get();
+		$cuadro->set_titulo(sprintf('Duracion de la beca: del %s al %s',$this->fecha_dmy($otorgada['fecha_desde']),$this->fecha_dmy($otorgada['fecha_hasta'])));
+		$informes = toba::consulta_php('co_becas_informes')->get_informes_postulacion($otorgada);
+		$cuadro->set_datos($informes);
+	}
+
+	function evt__cu_informes__presentar($seleccion)
+	{
+		$this->informe_seleccion = $seleccion;
+		$this->set_pantalla('pant_informe');
+		$template = ( in_array($seleccion['id_tipo_beca'], array(2,3)) ) 
+				? file_get_contents( __DIR__ . '/templates/ini_per.html')
+				: file_get_contents( __DIR__ . '/templates/pre.html');
+
+		$this->pantalla()->set_template($template);
+
+	}
+
+	function conf_evt__cu_informes__presentar(toba_evento_usuario $evento, $fila)
+	{
+		$params = explode('||',$evento->get_parametros());
+		if($this->soy_admin()){
+			$evento->mostrar();
+			return;
+		}
+
+		//Si no hay plazo de presentación abierto, no se hace nada
+		if( ! $this->plazo_presentacion_abierto){
+			$evento->desactivar();
+			return;
+		}
+	
+		//Si no hay plazos de presentación abiertos, no se muestra el botón
+		if( ! isset($this->tipos_informe_permitidos['P']) ){
+			$evento->ocultar();
+		}else{
+			//Si el tipo de informe permitido es igual al que se está cargando (o se permiten todos)...
+			if(in_array($params[4], $this->tipos_informe_permitidos['P']) || in_array('T', $this->tipos_informe_permitidos['P']) ) {
+				//Verifico que haya pasado la "fecha_debe_ser_presentado"
+				if( strtotime($params[5]) <= strtotime(date('Y-m-d')) ){
+					$evento->mostrar();
+				}else{
+					$evento->ocultar();
+				}	
+			}else{
+				$evento->ocultar();
+			}
+		}
+	}
+
+	function conf_evt__cu_informes__ver_dictamen(toba_evento_usuario $evento, $fila)
+	{
+		//$params[6] tiene el ID de informe. Tengo que ver si tiene dictamen, y en función de ello, mostrar u ocultar el evento
+		$params = explode('||',$evento->get_parametros());	
+		if(isset($params[6]) && $params[6]){
+			if(toba::consulta_php('co_becas_informes')->tiene_evaluacion($params[6])){
+				$evento->activar();
+			}else{
+				$evento->set_etiqueta('No evaluado aún');
+				$evento->desactivar();
+			}
+		}else{
+			$evento->anular();
+		}
+	}
+
+	function servicio__ver_dictamen()
+	{
+		$params = toba::memoria()->get_parametros();
+		$datos = toba::consulta_php('co_becas_informes')->get_detalles_informe($params['id_informe']);
+		$punto = toba::puntos_montaje()->get('proyecto');
+		toba_cargador::cargar_clase_archivo($punto->get_id(), 'generadores_pdf/becas/evaluacion_informe_beca.php' , 'sap' );
+		
+		$reporte = new Evaluacion_informe_beca($datos);
+		
+		$reporte->mostrar();
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_informe_beca ------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_informe_beca(sap_ei_formulario $form)
+	{
+		$informe = $this->informe_seleccion;
+		$ruta_base = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('ruta_base_documentos');
+		$url_base = toba::consulta_php('co_tablas_basicas')->get_parametro_conf('url_base_documentos');
+
+		if( ! ($ruta_base && strlen($ruta_base) >0 && is_dir($ruta_base))){
+			throw new toba_error('No está definido el parámetro \'ruta_base_documentos\' en la configuración del sistema (o no es una ruta válida)');
+		}
+		$sub_ruta = sprintf("/becas/doc_por_convocatoria/%s/%s/%s/informes/%s.pdf",
+			$informe['id_convocatoria'],
+			$informe['id_tipo_beca'],
+			$informe['nro_documento'],
+			$informe['nro_informe']);
+
+		$informe['archivo'] = (file_exists($ruta_base . $sub_ruta));
+
+		if($informe['archivo']){
+			$form->agregar_notificacion('Ya existe un documento cargado. Si quiere reemplazarlo, haga click en el botón "Cambiar el archivo", y luego seleccione uno nuevo.','warning');
+		}
+		$form->set_datos($informe);
+	}
+
+	function evt__form_informe_beca__guardar($datos)
+	{
+		$datos['fecha_presentacion'] = date('Y-m-d');
+
+		if(isset($datos['archivo']) && $datos['archivo']['size'] > 0){
+			if(mime_content_type($datos['archivo']['tmp_name']) != 'application/pdf'){
+				throw new toba_error("El archivo que intenta cargar no es un documento PDF válido");
+			}
+			$carpeta = sprintf("/becas/doc_por_convocatoria/%s/%s/%s/informes",$datos['id_convocatoria'],$datos['id_tipo_beca'],$datos['nro_documento']);
+			
+			if(toba::consulta_php('helper_archivos')->subir_archivo($datos['archivo'],$carpeta,$datos['nro_informe'].'.pdf')){
+				unset($datos['archivo']);
+				//Si existe, se carga (para que no se genere uno nuevo)
+				if(isset($datos['id_informe']) && $datos['id_informe']){
+					$this->dep('informe_beca')->cargar(array('id_informe' => $datos['id_informe']));
+				}
+				$this->dep('informe_beca')->set($datos);
+				$this->dep('informe_beca')->sincronizar();
+				$this->dep('informe_beca')->resetear();	
+
+				toba::notificacion()->agregar('Informe cargado con éxito!','info');
+				$this->set_pantalla('pant_seleccion_informe');
+			}else{
+				toba::notificacion()->agregar('Ocurrió un error al intentar presentar el informe','error');
+			}
+		}
+
+	}
+
+	function evt__form_informe_beca__volver()
+	{
+		$this->set_pantalla('pant_seleccion_informe');
+	}
+
+	protected function get_datos($tabla = NULL)
+	{
+		return $tabla ? $this->dep('datos')->tabla($tabla) : $this->dep('datos');
+	}
+
+}
+?>

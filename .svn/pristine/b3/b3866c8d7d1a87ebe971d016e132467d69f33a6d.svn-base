@@ -1,0 +1,109 @@
+<style>
+	.detalle_director_contenido{
+		display: flex;
+		flex-direction: row;
+		flex-wrap: nowrap;
+		justify-content: space-between;
+	}
+	.detalle_director_contenido_personales{
+		width: 40%;
+	}
+
+	.detalle_director_contenido_cat_inc{
+		width: 54%;	
+	}
+
+
+	.detalle_director_contenido_cat_inc{
+
+	}
+
+	.detalle_director_contenido_cat_inc .categoria_solicitada{
+		color: #2222FF;
+	    font-size: 1.6rem;
+	    font-weight: bold;
+	    margin: 14px auto;
+	}
+
+	.detalle_director_contenido_cat_inc h2{
+		margin: 0px 0px 10px 0px;
+    	text-align: center;
+	}
+
+	.detalle_director_contenido_cat_inc table{
+		border-collapse: collapse;
+	}
+
+	.detalle_director_contenido_cat_inc table tr td{
+		border: 1px solid #CCC;
+		padding: 3px 10px;
+	}
+
+	.small{
+		font-size: 1.1rem;
+    	text-align: center;
+	}
+
+	.detalle_director_contenido_personales p{
+		line-height: 1.7rem;
+		margin: 0px;
+	}
+	.conceder_form{
+
+	}
+	.justif_codir_subdir{
+		font-size: 1.4rem;
+		text-align: justify;
+		margin-top: 10px;
+	}
+
+</style>
+
+<fieldset class="detalle_director">
+	<legend><?php echo $datos['rol']; ?></legend>
+	<div class="detalle_director_contenido">
+		<div class="detalle_director_contenido_personales">
+			<p><b>Apellido y Nombres:</b> <span class="etiqueta_info" id="director"><?php echo $datos['ayn']; ?></span> (<b>DNI:</b> <?php echo $datos['dni']; ?>)</p>
+			<p><b>Cat. Incentivos:</b> <?php echo $datos['categoria_inc']; ?></p>
+			<p><b>Cat. Conicet:</b> <?php echo $datos['categoria_con']; ?></p>
+			<p><b>CVAr:</b> <a href="<?php echo $datos['enlace_cvar']; ?>" target="_BLANK" class="enlace">Ver ahora</a></p>
+			<p><b>Cargos:</b></p>
+			<ul id="director_cargos">
+				<?php echo $datos['cargos']; ?>
+			</ul>
+			<?php if (isset($datos['justificacion_codirector']) && $datos['rol'] == 'Co-Director') : ?>
+				<p class="justif_codir_subdir"><b>Justificación Co-Director: </b> <?php echo $datos['justificacion_codirector']; ?> </p>
+			<?php endif; ?>
+			<?php if (isset($datos['justificacion_subdirector']) && $datos['rol'] == 'Sub-Director') : ?>
+				<p class="justif_codir_subdir"><b>Justificación Sub-Director: </b> <?php echo $datos['justificacion_subdirector']; ?> </p>
+			<?php endif; ?>
+		</div>
+		<div class="detalle_director_contenido_cat_inc">
+
+			<h2>Calificación Transitoria de Incentivos</h2>
+			<?php if ($datos['cat_inc_requisitos']) : ?>
+				<div class="categoria_solicitada">
+					Se ha solicitado: <?php echo $datos['cat_inc_trans_desc'];  ?>	
+				</div>
+				<div>
+					<div class="small"> Documentación presentada:</div>
+					<table>
+						<?php foreach ($datos['cat_inc_requisitos'] as $requisito) : ?>
+							<tr>
+								<td><?php echo $requisito['requisito']; ?></td>
+								<td><a target="_BLANK" href="<?php echo $datos['url_base'] . helper_archivos::DIR_DOCUM_PERSONAL . $datos['dni'] . '/categoria_transitoria_incentivos/' . $datos['id_convocatoria'] . '-' . $requisito['id'] ?>">Ver</a></td>
+							</tr>
+						<?php endforeach; ?>
+					</table>
+				</div>
+			<?php else : ?>
+				<div class="categoria_solicitada small">
+					No se ha solicitado una calificación transitoria de incentivos
+				</div>
+			<?php endif; ?>
+		</div>
+
+	</div>
+	
+</fieldset>
+<br>

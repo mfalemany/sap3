@@ -1,0 +1,172 @@
+<?php
+class ci_grupos_evaluacion_detalles extends sap_ci
+{
+	protected $s__seleccionado;
+
+	public function conf()
+	{
+		$datos = $this->get_datos('grupo')->get();
+		if (!$datos) {
+			throw new toba_error('No se ha seleccionado un grupo para evaluar');
+		}
+		$this->s__seleccionado = $datos;
+	}
+	//-----------------------------------------------------------------------------------
+	//---- Configuraciones --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__pant_evaluacion(toba_ei_pantalla $pantalla)
+	{
+		$id_grupo       = $this->s__seleccionado['id_grupo'];
+		$datos['grupo'] = toba::consulta_php('co_grupos')->get_detalles_grupo($id_grupo);
+		//URL del template
+		$tpl = __DIR__.'/templates/template_pant_evaluacion.php';
+		//Armo el template con los datos y lo asigno a la pantalla
+		$tpl = $this->armar_template($tpl,$datos);
+		$pantalla->set_template($tpl);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_eval_grupo --------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_eval_grupo(sap_ei_formulario $form)
+	{
+		$datos = $this->get_datos('grupo')->get();
+		if($datos){
+			$form->set_datos($datos);
+		}
+	}
+
+	function evt__form_eval_grupo__modificacion($datos)
+	{
+		$this->get_datos('grupo')->set($datos);
+		
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_integrantes ---------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_integrantes(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_integrantes($this->s__seleccionado['id_grupo']));
+	}
+
+	public function conf_evt__cu_integrantes__ver_cvar(toba_evento_usuario $evento, $fila)
+	{
+		$params = explode('||', $evento->get_parametros());
+		if (toba::consulta_php('helper_archivos')->existe_documento_personal($params[0], 'cvar')) {
+			$evento->mostrar();
+		} else {
+			$evento->ocultar();
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- form_eval_plan_trabajo -------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_eval_plan_trabajo(sap_ei_formulario $form)
+	{
+		$datos = $this->get_datos('grupo_informe_evaluacion')->get();
+		if($datos){
+			$form->set_datos($datos);
+		}
+	}
+
+	function evt__form_eval_plan_trabajo__modificacion($datos)
+	{
+		//aquí se asigna el id_grupo e id_convocaotoria
+		$datos = array_merge($datos,$this->s__seleccionado);
+		$datos['nro_documento_evaluador'] = toba::usuario()->get_id();
+		$this->get_datos('grupo_informe_evaluacion')->set($datos);
+		
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_proyectos -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_proyectos(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->desactivar_modo_clave_segura();
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_proyectos_grupo($this->s__seleccionado['id_grupo'],FALSE));
+	}
+
+	public function conf_evt__cu_proyectos__ver_proyecto(toba_evento_usuario $evento, $fila)
+	{
+		$params = $evento->get_parametros();
+		$params = explode('||', $params);
+		if (isset($params[0]) && is_numeric($params[0])) {
+			$evento->mostrar();
+		} else {
+			$evento->ocultar();
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_publicaciones -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	public function conf__cu_publicaciones(sap_ei_cuadro $cuadro)
+	{
+		$datos = toba::consulta_php('co_grupos')->get_actividad_publicacion($this->s__seleccionado['id_grupo']);
+		if (count($datos)) {
+			$publicaciones = array_map(function($publicacion){
+				if (!empty($publicacion['url_publicacion'])) {
+					$publicacion['url_publicacion'] = "<a href='{$publicacion['url_publicacion']}' target='_BLANK' title='Esta enlace es proporcionado por el coordinador del grupo'>Ver publicacion</a>";
+				}
+				return $publicacion;
+			}, $datos);
+		}
+		$cuadro->set_datos($publicaciones);
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_extension -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_extension(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_extension($this->s__seleccionado['id_grupo']));
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_transferencia -------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_transferencia(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_transferencia($this->s__seleccionado['id_grupo']));
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_form_rrhh -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_form_rrhh(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_form_rrhh($this->s__seleccionado['id_grupo']));
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cu_reuniones -----------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cu_reuniones(sap_ei_cuadro $cuadro)
+	{
+		$cuadro->set_datos(toba::consulta_php('co_grupos')->get_actividad_evento($this->s__seleccionado['id_grupo']));
+	}
+
+
+	//-----------------------------------------------------------------------------------
+	//---- Auxiliares -------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+	function get_datos($tabla = null) 
+	{
+		return ($tabla) ? $this->controlador()->get_datos($tabla) : $this->controlador()->get_datos();
+	}
+}
+?>

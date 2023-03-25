@@ -1,0 +1,62 @@
+<?php
+class ci_comunicacion_filtro extends sap_ci
+{
+		protected $s__filtro;
+	//-----------------------------------------------------------------------------------
+	//---- cuadro -----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__cuadro(sap_ei_cuadro $cuadro)
+	{
+
+		if ( isset( $this->s__filtro ) ) {
+			$datos = toba::consulta_php('co_comunicaciones')->get_comunicaciones($this->s__filtro);
+			$cuadro->set_datos($datos);
+		}
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- filtro -----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function conf__form_filtro(sap_ei_formulario $filtro)
+	{
+		if ( isset($this->s__filtro ) ) {
+			$filtro->set_datos($this->s__filtro);
+		}
+
+	}
+
+	function evt__form_filtro__filtrar($datos)
+	{
+			$this->s__filtro = $datos;
+	}
+
+	function evt__form_filtro__cancelar()
+	{
+			unset($this->s__filtro);
+
+	}
+
+	//-----------------------------------------------------------------------------------
+	//---- cuadro -----------------------------------------------------------------------
+	//-----------------------------------------------------------------------------------
+
+	function evt__cuadro__seleccion($seleccion)
+	{
+			toba::memoria()->set_dato('comunicacion',$seleccion);
+			toba::vinculador()->navegar_a(toba::proyecto()->get_id(), 3514);
+	}
+
+	function evt__cuadro__abrir($seleccion)
+	{
+		if(toba::db()->ejecutar("UPDATE sap_comunicacion SET estado = 'A' WHERE id = ".quote($seleccion['id']))){
+			toba::notificacion()->agregar('Se ha abierto la comunicación correctamente.','info');
+		}else{
+			toba::notificacion()->agregar('Ocurrió un error al intentar abrir la comunicación');
+		}
+	}
+
+	
+}
+?>

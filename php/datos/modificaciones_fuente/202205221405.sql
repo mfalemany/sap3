@@ -1,0 +1,3 @@
+ALTER TABLE public.be_cat_conicet_persona ADD lugar_trabajo_tiene_asiento_en_unne boolean NOT NULL DEFAULT FALSE;
+ALTER TABLE public.sap_configuraciones ALTER COLUMN valor TYPE character varying USING valor::character varying;
+INSERT INTO sap_configuraciones VALUES ('mensaje_error_no_puede_cordinar_grupos','Usted no cumple las condiciones para coordinar un Grupo de Investigación. Para solicitar una excepción, comunicarse con la Secretaría de Investigación de su Facultad o Dirección de Instituto', 'Mensaje de error que se muestra a los usuarios que intentan acceder a la opeación de grupos, pero no tienen las condiciones para coordinar');
